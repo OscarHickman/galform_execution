@@ -31,6 +31,14 @@ jobs:
         run: |
           ruff check src
 
+      - name: Run isort (import order check)
+        run: |
+          isort --check-only src
+
+      - name: Run Black (format check)
+        run: |
+          black --check src
+
       - name: Run tests
         run: |
           pytest tests

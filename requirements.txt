@@ -1,2 +1,6 @@
 pytest
 ruff
+# runtime deps (none required for the pure wrapper)
+black
+isort
+
