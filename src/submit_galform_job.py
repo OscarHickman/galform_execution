@@ -47,6 +47,7 @@ class SimulationConfig:
     iz0: Optional[int] = None
     lbox: Optional[float] = None
     mpart: Optional[float] = None
+    data_filesystem: Optional[str] = None
 
 
 @dataclass

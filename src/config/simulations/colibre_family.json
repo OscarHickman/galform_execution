@@ -1,4 +1,23 @@
 {
+  "COLIBRE-L100m6": {
+    "aquarius_particle_file": "/cosma8/data/dp004/jch/COLIBRE/HBT/L100_m6/DMO/trees/particle_lists/particle_list_127",
+    "aquarius_tree_file": "/cosma8/data/dp004/jch/COLIBRE/HBT/L100_m6/DMO/trees/tree_127",
+    "data_filesystem": "cosma8",
+    "h0": 0.681,
+    "iz0": 127,
+    "iz_list": [127, 102, 92],
+    "lambda0": 0.693922,
+    "lbox": 68.1,
+    "mpart": 7847050.0,
+    "nbody_trees_dir": "/cosma8/data/dp004/jch/COLIBRE/HBT/L100_m6/DMO/trees",
+    "nvol_range": "1-64",
+    "omega0": 0.304611,
+    "omegab": 0.0486,
+    "pk_file": "Power_Spec/pk_COLIBRE_norm.dat",
+    "sigma8": 0.8159,
+    "snapshot_file": "/cosma8/data/dp004/jch/COLIBRE/HBT/L100_m6/DMO/trees/redshift_list.txt",
+    "volume": 315821.241
+  },
   "COLIBRE-L400m7": {
     "_note": "GALFORM-format aquarius trees not yet built from COLIBRE DMO. dhalo trees at /cosma7/data/dp004/jch/COLIBRE/L400_m7/DMO/dhalo_trees/ (not yet in GALFORM aquarius format). Update tree paths and iz0/iz_list/nvol_range before submitting.",
     "aquarius_particle_file": "/cosma5/data/jch/Galform/Merger_Trees/COLIBRE/L400_m7/particle_lists/particle_list_TBD",
