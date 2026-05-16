@@ -1,0 +1,62 @@
+{
+  "EagleDM": {
+    "aquarius_particle_file": "/cosma7/data/dp004/jch/Eagle/Merger_Trees/DMONLY/L0100N1504/trees/particle_lists/particle_list_200",
+    "aquarius_tree_file": "/cosma7/data/dp004/jch/Eagle/Merger_Trees/DMONLY/L0100N1504/trees/treedir_200/tree_200",
+    "h0": 0.6777,
+    "iz0": 200,
+    "iz_list": [
+      200
+    ],
+    "lambda0": 0.693,
+    "lbox": null,
+    "mpart": null,
+    "nbody_trees_dir": "/cosma7/data/dp004/jch/Eagle/Merger_Trees/DMONLY/L0100N1504",
+    "nvol_range": "1-128",
+    "omega0": 0.307,
+    "omegab": 0.0482519,
+    "pk_file": "Power_Spec/pk_EAGLE_norm.dat",
+    "sigma8": 0.8288,
+    "snapshot_file": "/cosma7/data/dp004/jch/Eagle/Merger_Trees/DMONLY/L0100N1504/eagle_redshift_list",
+    "volume": 2431.65796432
+  },
+  "EagleDM101": {
+    "aquarius_particle_file": "/cosma7/data/dp004/jch/Eagle/Merger_Trees/DMONLY/L0100N1504/trees_snapnums100/particle_lists/particle_list_101",
+    "aquarius_tree_file": "/cosma7/data/dp004/jch/Eagle/Merger_Trees/DMONLY/L0100N1504/trees_snapnums100/treedir_101/tree_101",
+    "h0": 0.6777,
+    "iz0": 101,
+    "iz_list": [
+      101
+    ],
+    "lambda0": 0.693,
+    "lbox": null,
+    "mpart": null,
+    "nbody_trees_dir": "/cosma7/data/dp004/jch/Eagle/Merger_Trees/DMONLY/L0100N1504/trees_snapnums100",
+    "nvol_range": "1-128",
+    "omega0": 0.307,
+    "omegab": 0.0482519,
+    "pk_file": "Power_Spec/pk_EAGLE_norm.dat",
+    "sigma8": 0.8288,
+    "snapshot_file": "/cosma7/data/dp004/jch/Eagle/Merger_Trees/DMONLY/L0100N1504/trees_snapnums100/redshift_list",
+    "volume": 2431.65796432
+  },
+  "EagleDM67": {
+    "aquarius_particle_file": "/cosma7/data/dp004/jch/Eagle/Merger_Trees/DMONLY/L0100N1504/trees_snapnums62/particle_lists/particle_list_067",
+    "aquarius_tree_file": "/cosma7/data/dp004/jch/Eagle/Merger_Trees/DMONLY/L0100N1504/trees_snapnums62/treedir_067/tree_067",
+    "h0": 0.6777,
+    "iz0": 67,
+    "iz_list": [
+      67
+    ],
+    "lambda0": 0.693,
+    "lbox": null,
+    "mpart": null,
+    "nbody_trees_dir": "/cosma7/data/dp004/jch/Eagle/Merger_Trees/DMONLY/L0100N1504/trees_snapnums62",
+    "nvol_range": "1-128",
+    "omega0": 0.307,
+    "omegab": 0.0482519,
+    "pk_file": "Power_Spec/pk_EAGLE_norm.dat",
+    "sigma8": 0.8288,
+    "snapshot_file": "/cosma7/data/dp004/jch/Eagle/Merger_Trees/DMONLY/L0100N1504/trees_snapnums62/redshift_list",
+    "volume": 2431.65796432
+  }
+}

@@ -1,0 +1,131 @@
+{
+  "L800": {
+    "aquarius_particle_file": "/cosma5/data/jch/Galform/Merger_Trees/P-Millennium/Updated_Trees/all_snaps/particle_lists/particle_list_269",
+    "aquarius_tree_file": "/cosma5/data/jch/Galform/Merger_Trees/P-Millennium/Updated_Trees/all_snaps/treedir_269/tree_269",
+    "h0": 0.6777,
+    "iz0": 271,
+    "iz_list": [
+      271,
+      207,
+      176,
+      155,
+      142,
+      120,
+      105,
+      100,
+      82
+    ],
+    "lambda0": 0.693,
+    "lbox": 542.16,
+    "mpart": 106100000.0,
+    "nbody_trees_dir": "/cosma5/data/jch/Galform/Merger_Trees/P-Millennium/Updated_Trees/all_snaps",
+    "nvol_range": "0-161",
+    "omega0": 0.307,
+    "omegab": 0.0482519,
+    "pk_file": "Power_Spec/pk_EAGLE_norm.dat",
+    "sigma8": 0.8288,
+    "snapshot_file": "/cosma5/data/jch/Galform/Merger_Trees/P-Millennium/Updated_Trees/all_snaps/redshift_list.txt",
+    "volume": 155626.1
+  },
+  "Mill1": {
+    "aquarius_particle_file": "/cosma5/data/jch/Galform/Merger_Trees/Millennium/new/particle_lists/particle_list_063",
+    "aquarius_tree_file": "/cosma5/data/jch/Galform/Merger_Trees/Millennium/new/treedir_063/tree_063",
+    "h0": 0.73,
+    "iz0": 63,
+    "iz_list": [
+      33,
+      63
+    ],
+    "lambda0": 0.75,
+    "lbox": null,
+    "mpart": null,
+    "nbody_trees_dir": "/cosma5/data/jch/Galform/Merger_Trees/Millennium/new",
+    "nvol_range": "1-64",
+    "omega0": 0.25,
+    "omegab": 0.045,
+    "pk_file": "Power_Spec/pk_Mill.dat",
+    "sigma8": 0.9,
+    "snapshot_file": "/cosma5/data/jch/Galform/Merger_Trees/Millennium/new/redshift_list",
+    "volume": 0
+  },
+  "Mill2": {
+    "aquarius_particle_file": "/cosma5/data/jch/Galform/Merger_Trees/Millennium2/new/particle_lists/particle_list_067",
+    "aquarius_tree_file": "/cosma5/data/jch/Galform/Merger_Trees/Millennium2/new/treedir_067/tree_067",
+    "h0": 0.73,
+    "iz0": 67,
+    "iz_list": [
+      67
+    ],
+    "lambda0": 0.75,
+    "lbox": null,
+    "mpart": null,
+    "nbody_trees_dir": "/cosma5/data/jch/Galform/Merger_Trees/Millennium2/new",
+    "nvol_range": "1-10",
+    "omega0": 0.25,
+    "omegab": 0.045,
+    "pk_file": "Power_Spec/pk_Mill.dat",
+    "sigma8": 0.9,
+    "snapshot_file": "/cosma5/data/jch/Galform/Merger_Trees/Millennium2/new/redshift_list",
+    "volume": 15625.0
+  },
+  "MillGas": {
+    "aquarius_particle_file": "/cosma5/data/jch/Galform/Merger_Trees/MillGas/dm/500/new/particle_lists/particle_list_061",
+    "aquarius_tree_file": "/cosma5/data/jch/Galform/Merger_Trees/MillGas/dm/500/new/treedir_061/tree_061",
+    "h0": 0.704,
+    "iz0": 61,
+    "iz_list": [
+      61
+    ],
+    "lambda0": 0.728,
+    "lbox": null,
+    "mpart": null,
+    "nbody_trees_dir": "/cosma5/data/jch/Galform/Merger_Trees/MillGas/dm/500/new/",
+    "nvol_range": "1-10",
+    "omega0": 0.272,
+    "omegab": 0.0455,
+    "pk_file": "Power_Spec/pk_MillGas_norm.dat",
+    "sigma8": 0.81,
+    "snapshot_file": "/cosma5/data/jch/Galform/Merger_Trees/MillGas/dm/500/new/redshift_list",
+    "volume": 1953125.0
+  },
+  "MillGas62.5": {
+    "aquarius_particle_file": "/cosma5/data/jch/Galform/Merger_Trees/MillGas/dm/62.5/new/particle_lists/particle_list_061",
+    "aquarius_tree_file": "/cosma5/data/jch/Galform/Merger_Trees/MillGas/dm/62.5/new/treedir_061/tree_061",
+    "h0": 0.704,
+    "iz0": 61,
+    "iz_list": [
+      61
+    ],
+    "lambda0": 0.728,
+    "lbox": null,
+    "mpart": null,
+    "nbody_trees_dir": "/cosma5/data/jch/Galform/Merger_Trees/MillGas/dm/62.5/new/",
+    "nvol_range": "1-1",
+    "omega0": 0.272,
+    "omegab": 0.0455,
+    "pk_file": "Power_Spec/pk_MillGas_norm.dat",
+    "sigma8": 0.81,
+    "snapshot_file": "/cosma5/data/jch/Galform/Merger_Trees/MillGas/dm/62.5/new/redshift_list",
+    "volume": 1953125.0
+  },
+  "MilliMil": {
+    "aquarius_particle_file": "/cosma5/data/jch/MilliMillennium/trees/particle_lists/particle_list_063",
+    "aquarius_tree_file": "/cosma5/data/jch/MilliMillennium/trees/treedir_063/tree_063",
+    "h0": 0.73,
+    "iz0": 63,
+    "iz_list": [
+      63
+    ],
+    "lambda0": 0.75,
+    "lbox": null,
+    "mpart": null,
+    "nbody_trees_dir": "/cosma5/data/jch/MilliMillennium/trees/",
+    "nvol_range": "1-8",
+    "omega0": 0.25,
+    "omegab": 0.045,
+    "pk_file": "Power_Spec/pk_Mill.dat",
+    "sigma8": 0.9,
+    "snapshot_file": "/cosma5/data/jch/MilliMillennium/trees/redshift_list",
+    "volume": 0
+  }
+}

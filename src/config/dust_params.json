@@ -1,0 +1,26 @@
+{
+  "baugh05": {
+    "beta2_burst": 1.6,
+    "beta2_disk": 2.0,
+    "dustfile": "Data/dust/dust_MW_hz1.0.dat",
+    "emdustfile": "0",
+    "fcloud": 0.25,
+    "lambda_break_burst": 100.0,
+    "lambda_break_disk": 10000.0,
+    "rfacburst": 1.0,
+    "tesc_burst": 0.001,
+    "tesc_disk": 0.001
+  },
+  "lacey16": {
+    "beta2_burst": 1.5,
+    "beta2_disk": 2.0,
+    "dustfile": "Data/dust/dust_MW_hz1.0.dat",
+    "emdustfile": "0",
+    "fcloud": 0.5,
+    "lambda_break_burst": 100.0,
+    "lambda_break_disk": 10000.0,
+    "rfacburst": 1.0,
+    "tesc_burst": 0.001,
+    "tesc_disk": 0.001
+  }
+}

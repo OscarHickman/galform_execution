@@ -1,0 +1,42 @@
+{
+  "DoveCDM": {
+    "aquarius_particle_file": "/cosma5/data/jch/Galform/Merger_Trees/Dove/CDM/trees/particle_lists/particle_list_159",
+    "aquarius_tree_file": "/cosma5/data/jch/Galform/Merger_Trees/Dove/CDM/trees/treedir_159/tree_159",
+    "h0": 0.704,
+    "iz0": 159,
+    "iz_list": [
+      159
+    ],
+    "lambda0": 0.728,
+    "lbox": 70.4,
+    "mpart": 6195595.0,
+    "nbody_trees_dir": "/cosma5/data/jch/Galform/Merger_Trees/Dove/CDM/trees",
+    "nvol_range": "1-64",
+    "omega0": 0.272,
+    "omegab": 0.0455,
+    "pk_file": "Data/Power_Spec/pk_MillGas_norm.dat",
+    "sigma8": 0.81,
+    "snapshot_file": "/cosma5/data/jch/Galform/Merger_Trees/Dove/CDM/trees/redshift_list",
+    "volume": 5451.776
+  },
+  "DoveWDM.clean": {
+    "aquarius_particle_file": "/gpfs/data/dph3apc/dove/wdm/trees_cleaned/particle_lists/particle_list_079",
+    "aquarius_tree_file": "/gpfs/data/dph3apc/dove/wdm/trees_cleaned/treedir_079/tree_079",
+    "h0": 0.704,
+    "iz0": 79,
+    "iz_list": [
+      79
+    ],
+    "lambda0": 0.728,
+    "lbox": 70.4,
+    "mpart": 6195595.0,
+    "nbody_trees_dir": "/gpfs/data/dph3apc/dove/wdm/trees_cleaned",
+    "nvol_range": "1-64",
+    "omega0": 0.272,
+    "omegab": 0.0455,
+    "pk_file": "Power_Spec/pk_WDMDove.dat",
+    "sigma8": 0.81,
+    "snapshot_file": "/gpfs/data/dph3apc/dove/wdm/trees_cleaned/dovewdmclean_redshift_list",
+    "volume": 5451.776
+  }
+}

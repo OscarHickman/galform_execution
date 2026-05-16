@@ -1,0 +1,22 @@
+{
+  "nifty62.5": {
+    "aquarius_particle_file": "",
+    "aquarius_tree_file": "/cosma5/data/jch/Galform/Merger_Trees/nifty/62.5/treedir_061/tree_061",
+    "h0": 0.704,
+    "iz0": 61,
+    "iz_list": [
+      61
+    ],
+    "lambda0": 0.728,
+    "lbox": null,
+    "mpart": null,
+    "nbody_trees_dir": "/cosma5/data/jch/Galform/Merger_Trees/nifty/62.5/",
+    "nvol_range": "1-64",
+    "omega0": 0.272,
+    "omegab": 0.0455,
+    "pk_file": "Power_Spec/pk_MillGas_norm.dat",
+    "sigma8": 0.81,
+    "snapshot_file": "/cosma5/data/jch/Galform/Merger_Trees/nifty/62.5/redshift_list",
+    "volume": 1953125.0
+  }
+}

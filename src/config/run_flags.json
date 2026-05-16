@@ -1,0 +1,16 @@
+{
+  "compile": false,
+  "galform": true,
+  "neta": true,
+  "dust_props": false,
+  "lum_fun": true,
+  "samp_z0": false,
+  "cosmicsed": false,
+  "lum_fun_burst": false,
+  "samp2_z0": false,
+  "sedfit": false,
+  "agn": false,
+  "sed_agn": false,
+  "samp_mah": false,
+  "study_stellar_mass_function": true
+}
