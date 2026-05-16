@@ -1,0 +1,147 @@
+# ==========================================
+# MASSIVE PHYSICS DATA & PLOTS
+# ==========================================
+*.hdf5
+*.h5
+*.dat
+*.csv
+*.tsv
+*.fits
+*.npy
+*.npz
+*.pkl
+*.parquet
+data/
+convergence_results*/
+*_plots/
+examples/_plots/
+
+# ==========================================
+# HPC LOGS & SLURM OUTPUTS
+# ==========================================
+slurm-*.out
+*.log
+*.err
+core.*
+.last_job_id
+*monitor_memory*
+logs/
+scripts/logs/
+
+# ==========================================
+# CUSTOM PROJECT DIRECTORIES & SCRATCH
+# ==========================================
+# Root-level scratch images from notebooks
+/*.png
+/*.pdf
+kai/
+examples/ongoing/
+examples/.ruff_cache/
+examples/**/.ruff_cache/
+
+# ==========================================
+# COMPILED C/C++/FORTRAN BINARIES
+# ==========================================
+*.o
+*.so
+*.a
+*.out
+*.exe
+*.mod
+bin/
+
+# ==========================================
+# PYTHON CORE (Byte-compiled)
+# ==========================================
+__pycache__/
+scripts/__pycache__/
+*.py[cod]
+*$py.class
+
+# ==========================================
+# DISTRIBUTION & PACKAGING
+# ==========================================
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+*.manifest
+*.spec
+
+# ==========================================
+# TESTING & JUPYTER
+# ==========================================
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+.ipynb_checkpoints
+
+slides/*
+examples/2pcf/*.png
+examples/2pcf/*.gif
+.venv*
+
+
+# ==========================================
+# ENVIRONMENTS & TYPING
+# ==========================================
+.python-version
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# ==========================================
+# IDEs & OS FILES
+# ==========================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ==========================================
+# AI Agents & GENERATED CODE
+# ==========================================
+.claude/*
+.mcp.json
+
+
+# ==========================================
+# Custom
+# ==========================================
+
+scripts/
+data/
