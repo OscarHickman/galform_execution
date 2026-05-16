@@ -37,7 +37,10 @@ jobs:
 
       - name: Run Black (format check)
         run: |
-          black --check src
+          # Black's safety check can fail on newer-targeted source when running
+          # on an older Python. Explicitly target the runner Python (3.12) so
+          # formatting is compared using the correct grammar.
+          black --check --target-version py312 src
 
       - name: Run tests
         run: |
