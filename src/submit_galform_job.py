@@ -25,9 +25,11 @@ from typing import Dict, List, Optional
 # Data classes for simulation / model / dust configuration
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class SimulationConfig:
     """N-body simulation configuration (tree paths, cosmology, snapshots)."""
+
     iz_list: List[int]
     nvol_range: str
     nbody_trees_dir: str
@@ -50,8 +52,9 @@ class SimulationConfig:
 @dataclass
 class DustParams:
     """Dust model parameters for post-processing."""
-    dustfile: str = 'Data/dust/dust_MW_hz1.0.dat'
-    emdustfile: str = '0'
+
+    dustfile: str = "Data/dust/dust_MW_hz1.0.dat"
+    emdustfile: str = "0"
     rfacburst: float = 1.0
     fcloud: float = 0.25
     tesc_disk: float = 0.001
@@ -65,6 +68,7 @@ class DustParams:
 @dataclass
 class ModelConfig:
     """GALFORM model configuration."""
+
     base_inputs_file: str
     dust_params: DustParams
     extra_replacements: Dict[str, str] = field(default_factory=dict)
@@ -73,6 +77,7 @@ class ModelConfig:
 @dataclass
 class RunFlags:
     """Flags controlling which parts of the GALFORM pipeline to run."""
+
     compile: bool = False
     galform: bool = True
     neta: bool = True
@@ -93,18 +98,18 @@ class RunFlags:
 # JSON-backed configurations
 # ---------------------------------------------------------------------------
 
-_CONFIG_DIR = Path(__file__).parent / 'config'
-_SIMULATION_CONFIG_DIR = _CONFIG_DIR / 'simulations'
-_SIMULATION_CONFIG_PATH = _CONFIG_DIR / 'simulations.json'
-_DUST_CONFIG_PATH = _CONFIG_DIR / 'dust_params.json'
-_MODEL_CONFIG_PATH = _CONFIG_DIR / 'models.json'
-_RUN_FLAGS_CONFIG_PATH = _CONFIG_DIR / 'run_flags.json'
-_LEGACY_RUN_FLAGS_CONFIG_PATH = Path(__file__).parent / 'run_flags.json'
+_CONFIG_DIR = Path(__file__).parent / "config"
+_SIMULATION_CONFIG_DIR = _CONFIG_DIR / "simulations"
+_SIMULATION_CONFIG_PATH = _CONFIG_DIR / "simulations.json"
+_DUST_CONFIG_PATH = _CONFIG_DIR / "dust_params.json"
+_MODEL_CONFIG_PATH = _CONFIG_DIR / "models.json"
+_RUN_FLAGS_CONFIG_PATH = _CONFIG_DIR / "run_flags.json"
+_LEGACY_RUN_FLAGS_CONFIG_PATH = Path(__file__).parent / "run_flags.json"
 
 # SLURM can transiently reject submissions during scheduler pressure.
 _TRANSIENT_SUBMIT_ERROR_MARKERS = (
-    'slurm temporarily unable to accept job',
-    'resource temporarily unavailable',
+    "slurm temporarily unable to accept job",
+    "resource temporarily unavailable",
 )
 
 
@@ -113,7 +118,9 @@ def _load_json(path: Path) -> Dict[str, dict]:
         return json.load(fh)
 
 
-def load_simulation_configs(config_path: Optional[str] = None) -> Dict[str, SimulationConfig]:
+def load_simulation_configs(
+    config_path: Optional[str] = None,
+) -> Dict[str, SimulationConfig]:
     """Load simulation configs from JSON.
 
     Supports a single JSON file or a directory containing ``*.json`` files.
@@ -127,7 +134,7 @@ def load_simulation_configs(config_path: Optional[str] = None) -> Dict[str, Simu
 
     if path.is_dir():
         merged: Dict[str, dict] = {}
-        for file_path in sorted(path.glob('*.json')):
+        for file_path in sorted(path.glob("*.json")):
             merged.update(_load_json(file_path))
         raw = merged
     else:
@@ -153,8 +160,8 @@ def load_model_configs(
     raw = _load_json(path)
     models: Dict[str, ModelConfig] = {}
     for name, cfg in raw.items():
-        dust_profile = cfg.get('dust_profile')
-        dust_params_raw = cfg.get('dust_params')
+        dust_profile = cfg.get("dust_profile")
+        dust_params_raw = cfg.get("dust_params")
         if dust_profile:
             if dust_profile not in dust:
                 raise ValueError(
@@ -169,16 +176,16 @@ def load_model_configs(
             )
 
         models[name] = ModelConfig(
-            base_inputs_file=cfg['base_inputs_file'],
+            base_inputs_file=cfg["base_inputs_file"],
             dust_params=dust_params,
-            extra_replacements=cfg.get('extra_replacements', {}),
+            extra_replacements=cfg.get("extra_replacements", {}),
         )
     return models
 
 
 DUST_CONFIGS = load_dust_configs()
-DUST_BAUGH05 = DUST_CONFIGS['baugh05']
-DUST_LACEY16 = DUST_CONFIGS['lacey16']
+DUST_BAUGH05 = DUST_CONFIGS["baugh05"]
+DUST_LACEY16 = DUST_CONFIGS["lacey16"]
 SIMULATION_CONFIGS = load_simulation_configs()
 MODEL_CONFIGS = load_model_configs(DUST_CONFIGS)
 
@@ -186,6 +193,7 @@ MODEL_CONFIGS = load_model_configs(DUST_CONFIGS)
 # ---------------------------------------------------------------------------
 # Helper: resolve log path
 # ---------------------------------------------------------------------------
+
 
 def load_run_flags_config(config_path: Optional[str] = None) -> RunFlags:
     """Load RunFlags from a JSON config file.
@@ -210,14 +218,14 @@ def load_run_flags_config(config_path: Optional[str] = None) -> RunFlags:
 
 def _default_cosma_user_root() -> Path:
     """Return the default COSMA user root path."""
-    user = os.environ.get('USER', Path.home().name)
-    return Path(f'/cosma5/data/durham/{user}')
+    user = os.environ.get("USER", Path.home().name)
+    return Path(f"/cosma5/data/durham/{user}")
 
 
 def _default_galform_dir() -> Path:
     """Return the default GALFORM source directory on COSMA."""
-    user = os.environ.get('USER', Path.home().name)
-    return Path(f'/cosma/apps/durham/{user}/galform')
+    user = os.environ.get("USER", Path.home().name)
+    return Path(f"/cosma/apps/durham/{user}/galform")
 
 
 def _resolve_log_path(explicit: Optional[str], output_folder_name: str) -> Path:
@@ -228,23 +236,25 @@ def _resolve_log_path(explicit: Optional[str], output_folder_name: str) -> Path:
     if explicit is not None:
         return Path(explicit)
 
-    env_log = os.environ.get('GALFORM_LOG_PATH')
+    env_log = os.environ.get("GALFORM_LOG_PATH")
     if env_log:
         return Path(env_log)
 
-    return _default_cosma_user_root() / output_folder_name / 'logs'
+    return _default_cosma_user_root() / output_folder_name / "logs"
 
 
 def _parse_nvol_range(nvol_range: str) -> tuple[int, int]:
     """Parse a legacy nvol range string (e.g. ``'12'`` or ``'1001-1024'``)."""
     raw = str(nvol_range).strip()
     if not raw:
-        raise ValueError('nvol range must not be empty')
+        raise ValueError("nvol range must not be empty")
 
-    if '-' in raw:
-        parts = raw.split('-', maxsplit=1)
+    if "-" in raw:
+        parts = raw.split("-", maxsplit=1)
         if len(parts) != 2 or not parts[0].strip() or not parts[1].strip():
-            raise ValueError(f"Invalid nvol range '{nvol_range}'. Expected 'start-end'.")
+            raise ValueError(
+                f"Invalid nvol range '{nvol_range}'. Expected 'start-end'."
+            )
         start = int(parts[0].strip())
         end = int(parts[1].strip())
     else:
@@ -260,6 +270,7 @@ def _parse_nvol_range(nvol_range: str) -> tuple[int, int]:
 # Main class
 # ---------------------------------------------------------------------------
 
+
 class GalformSubmitter:
     """Handle submission of GALFORM jobs to SLURM.
 
@@ -273,20 +284,20 @@ class GalformSubmitter:
     def __init__(
         self,
         galform_dir: str,
-        nbody_sim: str = 'L800',
-        model: str = 'gp14',
+        nbody_sim: str = "L800",
+        model: str = "gp14",
         iz: Optional[int] = None,
         nvol: Optional[str] = None,
         output_base_dir: Optional[str] = None,
-        output_folder_name: str = 'Galform_Out',
+        output_folder_name: str = "Galform_Out",
         log_path: Optional[str] = None,
-        partition: str = 'cosma5',
-        account: str = 'durham',
-        walltime: str = '72:00:00',
+        partition: str = "cosma5",
+        account: str = "durham",
+        walltime: str = "72:00:00",
         iz_list: Optional[List[int]] = None,
         nvol_range: Optional[str] = None,
         run_flags: Optional[RunFlags] = None,
-        stellar_pop_dir: str = '/cosma5/data/jch/Galform/Data/stellar_pop/',
+        stellar_pop_dir: str = "/cosma5/data/jch/Galform/Data/stellar_pop/",
         modules: Optional[List[str]] = None,
         input_overrides: Optional[Dict[str, str]] = None,
         output_redshifts: Optional[List[float]] = None,
@@ -346,30 +357,34 @@ class GalformSubmitter:
         self.run_flags = run_flags if run_flags is not None else load_run_flags_config()
         self.output_folder_name = output_folder_name
         self.input_overrides = dict(input_overrides) if input_overrides else {}
-        self.output_redshifts = list(output_redshifts) if output_redshifts is not None else None
-        self.output_iz_list = list(output_iz_list) if output_iz_list is not None else None
+        self.output_redshifts = (
+            list(output_redshifts) if output_redshifts is not None else None
+        )
+        self.output_iz_list = (
+            list(output_iz_list) if output_iz_list is not None else None
+        )
         self.submit_retries = max(1, int(submit_retries))
         self.submit_retry_delay_s = max(0.0, float(submit_retry_delay_s))
         self.submit_retry_backoff = max(1.0, float(submit_retry_backoff))
         self._snapshot_redshift_cache: Optional[Dict[int, float]] = None
 
         if self.output_redshifts is not None and self.output_iz_list is not None:
-            raise ValueError('Specify only one of output_redshifts and output_iz_list')
+            raise ValueError("Specify only one of output_redshifts and output_iz_list")
 
         # Multi-output tree building requires keeping descendants across outputs.
         if self._builds_galaxy_trees() and self._uses_multi_output():
-            self.input_overrides.setdefault('mgalmin_output_descendants', '.true.')
+            self.input_overrides.setdefault("mgalmin_output_descendants", ".true.")
 
         # Modules
         if modules is not None:
             self.modules = modules
         else:
             self.modules = [
-                'intel_comp/2024.2.0',
-                'compiler-rt',
-                'tbb',
-                'compiler',
-                'mpi',
+                "intel_comp/2024.2.0",
+                "compiler-rt",
+                "tbb",
+                "compiler",
+                "mpi",
             ]
 
         # Log path
@@ -388,12 +403,16 @@ class GalformSubmitter:
             default_iz_list = list(self.sim_config.iz_list)
             self.iz_list = iz_list if iz_list is not None else default_iz_list
             if nvol is not None and nvol_range is not None:
-                raise ValueError('Specify only one of nvol and nvol_range')
+                raise ValueError("Specify only one of nvol and nvol_range")
             resolved_nvol_range = nvol if nvol is not None else nvol_range
-            self.nvol_range = resolved_nvol_range if resolved_nvol_range is not None else self.sim_config.nvol_range
+            self.nvol_range = (
+                resolved_nvol_range
+                if resolved_nvol_range is not None
+                else self.sim_config.nvol_range
+            )
         else:
             if nvol is not None and nvol_range is not None:
-                raise ValueError('Specify only one of nvol and nvol_range')
+                raise ValueError("Specify only one of nvol and nvol_range")
             resolved_nvol_range = nvol if nvol is not None else nvol_range
             if iz_list is None or resolved_nvol_range is None:
                 raise ValueError(
@@ -416,16 +435,14 @@ class GalformSubmitter:
         self.nvol_start, self.nvol_end = _parse_nvol_range(self.nvol_range)
         self.nvol_count = self.nvol_end - self.nvol_start + 1
         # Use compact task IDs to avoid SLURM sites that reject large array indices.
-        self.slurm_array_range = f'1-{self.nvol_count}'
+        self.slurm_array_range = f"1-{self.nvol_count}"
 
         # Validate
         if not self.galform_dir.is_dir():
             raise FileNotFoundError(f"GALFORM directory not found: {self.galform_dir}")
-        galform_exe = self.galform_dir / 'build' / 'galform2'
+        galform_exe = self.galform_dir / "build" / "galform2"
         if not galform_exe.exists():
-            raise FileNotFoundError(
-                f"GALFORM executable not found: {galform_exe}"
-            )
+            raise FileNotFoundError(f"GALFORM executable not found: {galform_exe}")
 
     # ------------------------------------------------------------------
     # Script generation helpers
@@ -433,65 +450,65 @@ class GalformSubmitter:
 
     @staticmethod
     def _bool_to_csh(value: bool) -> str:
-        return 'true' if value else 'false'
+        return "true" if value else "false"
 
     def _generate_run_flags_block(self) -> str:
         rf = self.run_flags
         lines = [
-            '# ---- run flags (set by GalformSubmitter) ----',
-            f'set compile     = {self._bool_to_csh(rf.compile)}',
-            f'set galform     = {self._bool_to_csh(rf.galform)}',
-            f'set neta        = {self._bool_to_csh(rf.neta)}',
-            f'set dust_props  = {self._bool_to_csh(rf.dust_props)}',
-            f'set lum_fun     = {self._bool_to_csh(rf.lum_fun)}',
-            f'set samp_z0     = {self._bool_to_csh(rf.samp_z0)}',
-            f'set cosmicsed   = {self._bool_to_csh(rf.cosmicsed)}',
-            f'set lum_fun_burst = {self._bool_to_csh(rf.lum_fun_burst)}',
-            f'set samp2_z0      = {self._bool_to_csh(rf.samp2_z0)}',
-            f'set sedfit        = {self._bool_to_csh(rf.sedfit)}',
-            f'set agn           = {self._bool_to_csh(rf.agn)}',
-            f'set sed_agn       = {self._bool_to_csh(rf.sed_agn)}',
-            f'set samp_mah      = {self._bool_to_csh(rf.samp_mah)}',
-            f'set study_stellar_mass_function = {self._bool_to_csh(rf.study_stellar_mass_function)}',
+            "# ---- run flags (set by GalformSubmitter) ----",
+            f"set compile     = {self._bool_to_csh(rf.compile)}",
+            f"set galform     = {self._bool_to_csh(rf.galform)}",
+            f"set neta        = {self._bool_to_csh(rf.neta)}",
+            f"set dust_props  = {self._bool_to_csh(rf.dust_props)}",
+            f"set lum_fun     = {self._bool_to_csh(rf.lum_fun)}",
+            f"set samp_z0     = {self._bool_to_csh(rf.samp_z0)}",
+            f"set cosmicsed   = {self._bool_to_csh(rf.cosmicsed)}",
+            f"set lum_fun_burst = {self._bool_to_csh(rf.lum_fun_burst)}",
+            f"set samp2_z0      = {self._bool_to_csh(rf.samp2_z0)}",
+            f"set sedfit        = {self._bool_to_csh(rf.sedfit)}",
+            f"set agn           = {self._bool_to_csh(rf.agn)}",
+            f"set sed_agn       = {self._bool_to_csh(rf.sed_agn)}",
+            f"set samp_mah      = {self._bool_to_csh(rf.samp_mah)}",
+            f"set study_stellar_mass_function = {self._bool_to_csh(rf.study_stellar_mass_function)}",
         ]
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
     def _generate_dust_params_block(self, dust: DustParams) -> str:
         lines = [
-            '# ---- dust parameters ----',
-            f'set dustfile = {dust.dustfile}',
-            f'set emdustfile = {dust.emdustfile}',
-            f'set rfacburst  = {dust.rfacburst}',
-            f'set fcloud = {dust.fcloud}',
-            f'set tesc_disk  = {dust.tesc_disk}',
-            f'set tesc_burst = {dust.tesc_burst}',
-            f'set lambda_break_disk = {dust.lambda_break_disk}',
-            f'set beta2_disk = {dust.beta2_disk}',
-            f'set lambda_break_burst = {dust.lambda_break_burst}',
-            f'set beta2_burst = {dust.beta2_burst}',
+            "# ---- dust parameters ----",
+            f"set dustfile = {dust.dustfile}",
+            f"set emdustfile = {dust.emdustfile}",
+            f"set rfacburst  = {dust.rfacburst}",
+            f"set fcloud = {dust.fcloud}",
+            f"set tesc_disk  = {dust.tesc_disk}",
+            f"set tesc_burst = {dust.tesc_burst}",
+            f"set lambda_break_disk = {dust.lambda_break_disk}",
+            f"set beta2_disk = {dust.beta2_disk}",
+            f"set lambda_break_burst = {dust.lambda_break_burst}",
+            f"set beta2_burst = {dust.beta2_burst}",
         ]
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
     def _generate_simulation_block(self, sim: SimulationConfig) -> str:
         lines = [
-            '# ---- N-body simulation parameters ----',
-            f'set snapshot_file          = {sim.snapshot_file}',
-            f'set aquarius_tree_file     = {sim.aquarius_tree_file}',
-            f'set aquarius_particle_file = {sim.aquarius_particle_file}',
-            f'set volume     = {sim.volume}',
-            f'set omega0     = {sim.omega0}',
-            f'set lambda0    = {sim.lambda0}',
-            f'set omegab     = {sim.omegab}',
-            f'set h0         = {sim.h0}',
-            f'set sigma8     = {sim.sigma8}',
-            f'set PKfile     = {sim.pk_file}',
-            f'set iz0        = {sim.iz0}',
+            "# ---- N-body simulation parameters ----",
+            f"set snapshot_file          = {sim.snapshot_file}",
+            f"set aquarius_tree_file     = {sim.aquarius_tree_file}",
+            f"set aquarius_particle_file = {sim.aquarius_particle_file}",
+            f"set volume     = {sim.volume}",
+            f"set omega0     = {sim.omega0}",
+            f"set lambda0    = {sim.lambda0}",
+            f"set omegab     = {sim.omegab}",
+            f"set h0         = {sim.h0}",
+            f"set sigma8     = {sim.sigma8}",
+            f"set PKfile     = {sim.pk_file}",
+            f"set iz0        = {sim.iz0}",
         ]
         if sim.lbox is not None:
-            lines.append(f'set lbox  = {sim.lbox}')
+            lines.append(f"set lbox  = {sim.lbox}")
         if sim.mpart is not None:
-            lines.append(f'set mpart = {sim.mpart}')
-        return '\n'.join(lines)
+            lines.append(f"set mpart = {sim.mpart}")
+        return "\n".join(lines)
 
     def _generate_model_setup_block(self) -> str:
         """Generate the block that copies the base .input.ref file and applies modifications."""
@@ -502,67 +519,73 @@ class GalformSubmitter:
             )
         mc = self.model_config
         lines = [
-            '# ---- model parameter file setup ----',
-            f'set base_inputs_file = {mc.base_inputs_file}',
-            'set galform_inputs_file = ./params/${Nbody_sim}_${model}_iz${iz}_ivol${ivol}.input.temp',
-            '\\mkdir -p ./params',
-            'cp $base_inputs_file $galform_inputs_file',
+            "# ---- model parameter file setup ----",
+            f"set base_inputs_file = {mc.base_inputs_file}",
+            "set galform_inputs_file = ./params/${Nbody_sim}_${model}_iz${iz}_ivol${ivol}.input.temp",
+            "\\mkdir -p ./params",
+            "cp $base_inputs_file $galform_inputs_file",
         ]
         for name, value in mc.extra_replacements.items():
-            lines.append(f'./replace_variable.csh $galform_inputs_file {name} {value}')
-        return '\n'.join(lines)
+            lines.append(f"./replace_variable.csh $galform_inputs_file {name} {value}")
+        return "\n".join(lines)
 
     def _generate_parameter_overrides_block(self) -> str:
         """Generate the block that injects simulation/cosmology params into the input file."""
         output_redshifts = self._resolve_output_redshifts()
         if output_redshifts is None:
-            nout_value = '1'
-            zout_value = '$z'
+            nout_value = "1"
+            zout_value = "$z"
         else:
             nout_value = str(len(output_redshifts))
-            zout_value = ' '.join(self._format_float_for_input(zout) for zout in output_redshifts)
+            zout_value = " ".join(
+                self._format_float_for_input(zout) for zout in output_redshifts
+            )
 
         lines = [
-            '# ---- override parameters for N-body run ----',
-            f'./replace_variable.csh $galform_inputs_file stellar_pop_dir {self.stellar_pop_dir}',
-            './replace_variable.csh $galform_inputs_file append_ivolume .true.',
-            './replace_variable.csh $galform_inputs_file aquarius_tree_file $aquarius_tree_file',
+            "# ---- override parameters for N-body run ----",
+            f"./replace_variable.csh $galform_inputs_file stellar_pop_dir {self.stellar_pop_dir}",
+            "./replace_variable.csh $galform_inputs_file append_ivolume .true.",
+            "./replace_variable.csh $galform_inputs_file aquarius_tree_file $aquarius_tree_file",
         ]
-        if self.nbody_sim != 'nifty62.5':
-            lines.append('./replace_variable.csh $galform_inputs_file aquarius_particle_file $aquarius_particle_file')
+        if self.nbody_sim != "nifty62.5":
+            lines.append(
+                "./replace_variable.csh $galform_inputs_file aquarius_particle_file $aquarius_particle_file"
+            )
         else:
-            lines.append('./delete_variable.csh $galform_inputs_file aquarius_particle_file')
+            lines.append(
+                "./delete_variable.csh $galform_inputs_file aquarius_particle_file"
+            )
         lines += [
-            './replace_variable.csh $galform_inputs_file volume $volume',
-            './replace_variable.csh $galform_inputs_file omega0 $omega0',
-            './replace_variable.csh $galform_inputs_file lambda0 $lambda0',
-            './replace_variable.csh $galform_inputs_file omegab $omegab',
-            './replace_variable.csh $galform_inputs_file h0 $h0',
-            './replace_variable.csh $galform_inputs_file sigma8 $sigma8',
-            './replace_variable.csh $galform_inputs_file itrans -1',
-            './replace_variable.csh $galform_inputs_file PKfile $PKfile',
-            f'./replace_variable.csh $galform_inputs_file nout {nout_value}',
-            f'./replace_vector.csh $galform_inputs_file zout {zout_value}',
+            "./replace_variable.csh $galform_inputs_file volume $volume",
+            "./replace_variable.csh $galform_inputs_file omega0 $omega0",
+            "./replace_variable.csh $galform_inputs_file lambda0 $lambda0",
+            "./replace_variable.csh $galform_inputs_file omegab $omegab",
+            "./replace_variable.csh $galform_inputs_file h0 $h0",
+            "./replace_variable.csh $galform_inputs_file sigma8 $sigma8",
+            "./replace_variable.csh $galform_inputs_file itrans -1",
+            "./replace_variable.csh $galform_inputs_file PKfile $PKfile",
+            f"./replace_variable.csh $galform_inputs_file nout {nout_value}",
+            f"./replace_vector.csh $galform_inputs_file zout {zout_value}",
         ]
 
         # Inject optional user-provided parameter overrides.
         for name, value in self.input_overrides.items():
-            lines.append(f'./replace_variable.csh $galform_inputs_file {name} {value}')
+            lines.append(f"./replace_variable.csh $galform_inputs_file {name} {value}")
 
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
     @staticmethod
     def _format_float_for_input(value: float) -> str:
         """Format numeric input values compactly for GALFORM parameter files."""
-        return f'{float(value):.12g}'
+        return f"{float(value):.12g}"
 
     @staticmethod
     def _is_truthy_fortran(value: str) -> bool:
         v = value.strip().lower()
-        return v in {'.true.', 'true', 't'}
+        return v in {".true.", "true", "t"}
 
     def _builds_galaxy_trees(self) -> bool:
-        raw = self.input_overrides.get('build_galaxy_trees')
+        raw = self.input_overrides.get("build_galaxy_trees")
         return bool(raw is not None and self._is_truthy_fortran(raw))
 
     def _uses_multi_output(self) -> bool:
@@ -576,17 +599,17 @@ class GalformSubmitter:
         if self._snapshot_redshift_cache is not None:
             return self._snapshot_redshift_cache
         if self.sim_config is None:
-            raise ValueError('Simulation config is required to resolve output_iz_list')
+            raise ValueError("Simulation config is required to resolve output_iz_list")
 
         snapshot_map: Dict[int, float] = {}
         snapshot_file = Path(self.sim_config.snapshot_file)
         if not snapshot_file.exists():
-            raise FileNotFoundError(f'Snapshot file not found: {snapshot_file}')
+            raise FileNotFoundError(f"Snapshot file not found: {snapshot_file}")
 
         with open(snapshot_file) as fh:
             for line in fh:
                 line = line.strip()
-                if not line or line.startswith('#'):
+                if not line or line.startswith("#"):
                     continue
                 parts = line.split()
                 if len(parts) < 2:
@@ -614,7 +637,9 @@ class GalformSubmitter:
             else:
                 resolved.append(snapshot_map[iz])
         if missing:
-            raise ValueError(f'Could not resolve redshift(s) for output_iz_list entries: {missing}')
+            raise ValueError(
+                f"Could not resolve redshift(s) for output_iz_list entries: {missing}"
+            )
         return resolved
 
     def _generate_bands_block(self) -> str:
@@ -801,12 +826,9 @@ exit
             pass
 
         # Load COSMA modules without relying on interactive tcsh startup files.
-        modulecmd = '/cosma/local/Modules/default/libexec/modulecmd.tcl'
-        module_lines = (
-            f'eval `/usr/bin/tclsh {modulecmd} csh purge`\n'
-            + '\n'.join(
-                f'eval `/usr/bin/tclsh {modulecmd} csh load {m}`' for m in self.modules
-            )
+        modulecmd = "/cosma/local/Modules/default/libexec/modulecmd.tcl"
+        module_lines = f"eval `/usr/bin/tclsh {modulecmd} csh purge`\n" + "\n".join(
+            f"eval `/usr/bin/tclsh {modulecmd} csh load {m}`" for m in self.modules
         )
 
         script = f"""#!/bin/tcsh -ef
@@ -910,8 +932,8 @@ set SAMPLE_GALS_EXE    = ${{build_dir}}/sample_gals
             print(script_content)
             return None
 
-        cmd = ['sbatch']
-        cmd.append(f'--array={self.slurm_array_range}')
+        cmd = ["sbatch"]
+        cmd.append(f"--array={self.slurm_array_range}")
 
         for attempt in range(1, self.submit_retries + 1):
             try:
@@ -932,7 +954,9 @@ set SAMPLE_GALS_EXE    = ${{build_dir}}/sample_gals
                 stdout = e.stdout.decode() if e.stdout else ""
                 stderr = e.stderr.decode() if e.stderr else ""
                 combined = f"{stdout}\n{stderr}".lower()
-                is_transient = any(marker in combined for marker in _TRANSIENT_SUBMIT_ERROR_MARKERS)
+                is_transient = any(
+                    marker in combined for marker in _TRANSIENT_SUBMIT_ERROR_MARKERS
+                )
                 is_last_attempt = attempt >= self.submit_retries
 
                 if not is_transient or is_last_attempt:
@@ -941,7 +965,9 @@ set SAMPLE_GALS_EXE    = ${{build_dir}}/sample_gals
                         f"STDOUT: {stdout}\nSTDERR: {stderr}"
                     ) from e
 
-                delay_s = self.submit_retry_delay_s * (self.submit_retry_backoff ** (attempt - 1))
+                delay_s = self.submit_retry_delay_s * (
+                    self.submit_retry_backoff ** (attempt - 1)
+                )
                 print(
                     f"Transient SLURM submission error for iz={iz}. "
                     f"Retrying in {delay_s:.1f}s "
@@ -971,10 +997,11 @@ set SAMPLE_GALS_EXE    = ${{build_dir}}/sample_gals
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def main():
     """Main entry point for the script."""
     parser = argparse.ArgumentParser(
-        description='Submit GALFORM N-body runs to SLURM batch queue on COSMA',
+        description="Submit GALFORM N-body runs to SLURM batch queue on COSMA",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -996,77 +1023,138 @@ Examples:
     )
 
     parser.add_argument(
-        'galform_dir', nargs='?',
+        "galform_dir",
+        nargs="?",
         default=str(_default_galform_dir()),
-        help='Path to the GALFORM source directory '
-             f'(default: {_default_galform_dir()}; contains build/, *.input.ref, etc.)',
+        help="Path to the GALFORM source directory "
+        f"(default: {_default_galform_dir()}; contains build/, *.input.ref, etc.)",
     )
 
-    parser.add_argument('--nbody-sim', default='L800',
-                        help='N-body simulation name (default: L800)')
-    parser.add_argument('--model', default='gp14',
-                        help='GALFORM model name (default: gp14)')
-    parser.add_argument('--iz', type=int,
-                        help='Single snapshot number to submit')
-    parser.add_argument('--nvol',
-                        help='Subvolume range for SLURM array submission (e.g. "1-10" or "12")')
-    parser.add_argument('--output-base-dir',
-                        help='Root directory for GALFORM outputs (default: /cosma5/data/durham/$USER)')
-    parser.add_argument('--output-folder-name', default='Galform_Out',
-                        help='Folder name under the base output directory (default: Galform_Out)')
-    parser.add_argument('--log-path',
-                        help='Directory for SLURM log files')
-    parser.add_argument('--partition', default='cosma5',
-                        help='SLURM partition (default: cosma5)')
-    parser.add_argument('--account', default='durham',
-                        help='SLURM account (default: durham)')
-    parser.add_argument('--walltime', default='72:00:00',
-                        help='Job wall-time (default: 72:00:00)')
-    parser.add_argument('--iz-list', type=int, nargs='+',
-                        help='Override default snapshot list')
-    parser.add_argument('--output-iz-list', type=int, nargs='+',
-                        help='Output multiple snapshots in one run (sets nout/zout)')
-    parser.add_argument('--output-z-list', type=float, nargs='+',
-                        help='Output multiple redshifts in one run (sets nout/zout)')
-    parser.add_argument('--nvol-range',
-                        help='Deprecated alias for --nvol')
-    parser.add_argument('--run-flags-config',
-                        help='Path to a JSON file overriding default run flags '
-                            '(defaults to config/run_flags.json next to this script)')
+    parser.add_argument(
+        "--nbody-sim", default="L800", help="N-body simulation name (default: L800)"
+    )
+    parser.add_argument(
+        "--model", default="gp14", help="GALFORM model name (default: gp14)"
+    )
+    parser.add_argument("--iz", type=int, help="Single snapshot number to submit")
+    parser.add_argument(
+        "--nvol",
+        help='Subvolume range for SLURM array submission (e.g. "1-10" or "12")',
+    )
+    parser.add_argument(
+        "--output-base-dir",
+        help="Root directory for GALFORM outputs (default: /cosma5/data/durham/$USER)",
+    )
+    parser.add_argument(
+        "--output-folder-name",
+        default="Galform_Out",
+        help="Folder name under the base output directory (default: Galform_Out)",
+    )
+    parser.add_argument("--log-path", help="Directory for SLURM log files")
+    parser.add_argument(
+        "--partition", default="cosma5", help="SLURM partition (default: cosma5)"
+    )
+    parser.add_argument(
+        "--account", default="durham", help="SLURM account (default: durham)"
+    )
+    parser.add_argument(
+        "--walltime", default="72:00:00", help="Job wall-time (default: 72:00:00)"
+    )
+    parser.add_argument(
+        "--iz-list", type=int, nargs="+", help="Override default snapshot list"
+    )
+    parser.add_argument(
+        "--output-iz-list",
+        type=int,
+        nargs="+",
+        help="Output multiple snapshots in one run (sets nout/zout)",
+    )
+    parser.add_argument(
+        "--output-z-list",
+        type=float,
+        nargs="+",
+        help="Output multiple redshifts in one run (sets nout/zout)",
+    )
+    parser.add_argument("--nvol-range", help="Deprecated alias for --nvol")
+    parser.add_argument(
+        "--run-flags-config",
+        help="Path to a JSON file overriding default run flags "
+        "(defaults to config/run_flags.json next to this script)",
+    )
 
     # Run-flag toggles — these override the defaults from run_flags.json
-    flag_group = parser.add_argument_group('pipeline stages')
-    flag_group.add_argument('--run-galform', action='store_true', default=False,
-                            help='Force galform2 executable on (overrides JSON default)')
-    flag_group.add_argument('--no-galform', action='store_true', default=False,
-                            help='Force galform2 executable off (overrides JSON default)')
-    flag_group.add_argument('--no-neta', action='store_true',
-                            help='Disable neta_ave dust calculation')
-    flag_group.add_argument('--no-lum-fun', action='store_true',
-                            help='Disable luminosity function calculation')
-    flag_group.add_argument('--no-study-smf', action='store_true',
-                            help='Disable stellar mass function output')
-    flag_group.add_argument('--run-dust-props', action='store_true',
-                            help='Enable dust properties output')
-    flag_group.add_argument('--run-samp-z0', action='store_true',
-                            help='Enable z=0 galaxy sample output')
+    flag_group = parser.add_argument_group("pipeline stages")
+    flag_group.add_argument(
+        "--run-galform",
+        action="store_true",
+        default=False,
+        help="Force galform2 executable on (overrides JSON default)",
+    )
+    flag_group.add_argument(
+        "--no-galform",
+        action="store_true",
+        default=False,
+        help="Force galform2 executable off (overrides JSON default)",
+    )
+    flag_group.add_argument(
+        "--no-neta", action="store_true", help="Disable neta_ave dust calculation"
+    )
+    flag_group.add_argument(
+        "--no-lum-fun",
+        action="store_true",
+        help="Disable luminosity function calculation",
+    )
+    flag_group.add_argument(
+        "--no-study-smf",
+        action="store_true",
+        help="Disable stellar mass function output",
+    )
+    flag_group.add_argument(
+        "--run-dust-props", action="store_true", help="Enable dust properties output"
+    )
+    flag_group.add_argument(
+        "--run-samp-z0", action="store_true", help="Enable z=0 galaxy sample output"
+    )
 
-    tree_group = parser.add_argument_group('tree-output toggles')
-    tree_group.add_argument('--build-galaxy-trees', action='store_true', default=None,
-                            help='Set build_galaxy_trees = .true. in GALFORM input')
-    tree_group.add_argument('--no-build-galaxy-trees', action='store_true', default=None,
-                            help='Set build_galaxy_trees = .false. in GALFORM input')
-    tree_group.add_argument('--output-halo-trees', action='store_true', default=None,
-                            help='Set output_halo_trees = .true. in GALFORM input')
-    tree_group.add_argument('--no-output-halo-trees', action='store_true', default=None,
-                            help='Set output_halo_trees = .false. in GALFORM input')
+    tree_group = parser.add_argument_group("tree-output toggles")
+    tree_group.add_argument(
+        "--build-galaxy-trees",
+        action="store_true",
+        default=None,
+        help="Set build_galaxy_trees = .true. in GALFORM input",
+    )
+    tree_group.add_argument(
+        "--no-build-galaxy-trees",
+        action="store_true",
+        default=None,
+        help="Set build_galaxy_trees = .false. in GALFORM input",
+    )
+    tree_group.add_argument(
+        "--output-halo-trees",
+        action="store_true",
+        default=None,
+        help="Set output_halo_trees = .true. in GALFORM input",
+    )
+    tree_group.add_argument(
+        "--no-output-halo-trees",
+        action="store_true",
+        default=None,
+        help="Set output_halo_trees = .false. in GALFORM input",
+    )
 
-    parser.add_argument('--dry-run', action='store_true',
-                        help='Print job scripts without submitting')
-    parser.add_argument('--list-simulations', action='store_true',
-                        help='List available simulation configurations and exit')
-    parser.add_argument('--list-models', action='store_true',
-                        help='List available model configurations and exit')
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Print job scripts without submitting"
+    )
+    parser.add_argument(
+        "--list-simulations",
+        action="store_true",
+        help="List available simulation configurations and exit",
+    )
+    parser.add_argument(
+        "--list-models",
+        action="store_true",
+        help="List available model configurations and exit",
+    )
 
     args = parser.parse_args()
 
@@ -1078,7 +1166,7 @@ Examples:
         for name, cfg in sorted(SIMULATION_CONFIGS.items()):
             iz_str = str(cfg.iz_list)
             if len(iz_str) > 37:
-                iz_str = iz_str[:34] + '...'
+                iz_str = iz_str[:34] + "..."
             print(f"{name:<20} {iz_str:<40} {cfg.nvol_range:<15}")
         return 0
 
@@ -1095,31 +1183,41 @@ Examples:
     # Load defaults from JSON, then apply any explicit CLI overrides on top.
     _json_defaults = load_run_flags_config(args.run_flags_config)
     run_flags = RunFlags(
-        galform=True if args.run_galform else (False if args.no_galform else _json_defaults.galform),
+        galform=(
+            True
+            if args.run_galform
+            else (False if args.no_galform else _json_defaults.galform)
+        ),
         neta=False if args.no_neta else _json_defaults.neta,
         lum_fun=False if args.no_lum_fun else _json_defaults.lum_fun,
-        study_stellar_mass_function=False if args.no_study_smf else _json_defaults.study_stellar_mass_function,
+        study_stellar_mass_function=(
+            False if args.no_study_smf else _json_defaults.study_stellar_mass_function
+        ),
         dust_props=True if args.run_dust_props else _json_defaults.dust_props,
         samp_z0=True if args.run_samp_z0 else _json_defaults.samp_z0,
     )
 
     input_overrides: Dict[str, str] = {}
     if args.build_galaxy_trees and args.no_build_galaxy_trees:
-        raise ValueError('Use only one of --build-galaxy-trees or --no-build-galaxy-trees')
+        raise ValueError(
+            "Use only one of --build-galaxy-trees or --no-build-galaxy-trees"
+        )
     if args.output_halo_trees and args.no_output_halo_trees:
-        raise ValueError('Use only one of --output-halo-trees or --no-output-halo-trees')
+        raise ValueError(
+            "Use only one of --output-halo-trees or --no-output-halo-trees"
+        )
     if args.output_iz_list and args.output_z_list:
-        raise ValueError('Use only one of --output-iz-list or --output-z-list')
+        raise ValueError("Use only one of --output-iz-list or --output-z-list")
 
     if args.build_galaxy_trees:
-        input_overrides['build_galaxy_trees'] = '.true.'
+        input_overrides["build_galaxy_trees"] = ".true."
     if args.no_build_galaxy_trees:
-        input_overrides['build_galaxy_trees'] = '.false.'
+        input_overrides["build_galaxy_trees"] = ".false."
 
     if args.output_halo_trees:
-        input_overrides['output_halo_trees'] = '.true.'
+        input_overrides["output_halo_trees"] = ".true."
     if args.no_output_halo_trees:
-        input_overrides['output_halo_trees'] = '.false.'
+        input_overrides["output_halo_trees"] = ".false."
 
     try:
         submitter = GalformSubmitter(
@@ -1149,5 +1247,5 @@ Examples:
         return 1
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())
