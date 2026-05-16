@@ -30,21 +30,21 @@ from typing import Dict, List, Optional
 class SimulationConfig:
     """N-body simulation configuration (tree paths, cosmology, snapshots)."""
 
-    iz_list: List[int]
     nvol_range: str
     nbody_trees_dir: str
     snapshot_file: str
     aquarius_tree_file: str
     aquarius_particle_file: str
-    volume: float
     omega0: float
     lambda0: float
     omegab: float
     h0: float
     sigma8: float
     pk_file: str
-    iz0: int
     # Optional fields with defaults
+    iz_list: Optional[List[int]] = None
+    volume: Optional[float] = None
+    iz0: Optional[int] = None
     lbox: Optional[float] = None
     mpart: Optional[float] = None
 
@@ -140,7 +140,10 @@ def load_simulation_configs(
     else:
         raw = _load_json(path)
 
-    return {name: SimulationConfig(**cfg) for name, cfg in raw.items()}
+    return {
+        name: SimulationConfig(**{k: v for k, v in cfg.items() if not k.startswith("_")})
+        for name, cfg in raw.items()
+    }
 
 
 def load_dust_configs(config_path: Optional[str] = None) -> Dict[str, DustParams]:
@@ -400,7 +403,7 @@ class GalformSubmitter:
         # Resolve simulation config
         if nbody_sim in SIMULATION_CONFIGS:
             self.sim_config = SIMULATION_CONFIGS[nbody_sim]
-            default_iz_list = list(self.sim_config.iz_list)
+            default_iz_list = list(self.sim_config.iz_list) if self.sim_config.iz_list else []
             self.iz_list = iz_list if iz_list is not None else default_iz_list
             if nvol is not None and nvol_range is not None:
                 raise ValueError("Specify only one of nvol and nvol_range")
@@ -490,6 +493,16 @@ class GalformSubmitter:
         return "\n".join(lines)
 
     def _generate_simulation_block(self, sim: SimulationConfig) -> str:
+        if sim.volume is None:
+            raise ValueError(
+                f"SimulationConfig for '{self.nbody_sim}' has no 'volume' — "
+                "set it in the simulation JSON before submitting."
+            )
+        if sim.iz0 is None:
+            raise ValueError(
+                f"SimulationConfig for '{self.nbody_sim}' has no 'iz0' — "
+                "set it in the simulation JSON before submitting."
+            )
         lines = [
             "# ---- N-body simulation parameters ----",
             f"set snapshot_file          = {sim.snapshot_file}",
@@ -1164,7 +1177,7 @@ Examples:
         print(fmt)
         print("-" * 75)
         for name, cfg in sorted(SIMULATION_CONFIGS.items()):
-            iz_str = str(cfg.iz_list)
+            iz_str = str(cfg.iz_list) if cfg.iz_list else "(not set)"
             if len(iz_str) > 37:
                 iz_str = iz_str[:34] + "..."
             print(f"{name:<20} {iz_str:<40} {cfg.nvol_range:<15}")

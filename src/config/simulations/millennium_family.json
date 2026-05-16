@@ -19,7 +19,7 @@
     "lbox": 542.16,
     "mpart": 106100000.0,
     "nbody_trees_dir": "/cosma5/data/jch/Galform/Merger_Trees/P-Millennium/Updated_Trees/all_snaps",
-    "nvol_range": "0-161",
+    "nvol_range": "1-1024",
     "omega0": 0.307,
     "omegab": 0.0482519,
     "pk_file": "Power_Spec/pk_EAGLE_norm.dat",

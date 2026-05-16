@@ -1,0 +1,21 @@
+{
+  "FLAMINGO-L1000N1800": {
+    "aquarius_particle_file": "/cosma8/data/dp004/jch/FLAMINGO/HBT/L1000N1800/DMO_FIDUCIAL/trees/particle_lists/particle_list_077",
+    "aquarius_tree_file": "/cosma8/data/dp004/jch/FLAMINGO/HBT/L1000N1800/DMO_FIDUCIAL/trees/tree_077",
+    "data_filesystem": "cosma8",
+    "h0": 0.681,
+    "iz0": 77,
+    "iz_list": [77, 67, 57, 37],
+    "lambda0": 0.693922,
+    "lbox": 681.0,
+    "mpart": 4599600000.0,
+    "nbody_trees_dir": "/cosma8/data/dp004/jch/FLAMINGO/HBT/L1000N1800/DMO_FIDUCIAL/trees",
+    "nvol_range": "1-64",
+    "omega0": 0.306078,
+    "omegab": 0.0486,
+    "pk_file": "Power_Spec/pk_FLAMINGO_DMO_FIDUCIAL.dat",
+    "sigma8": 0.807,
+    "snapshot_file": "none",
+    "volume": 2467353.4453125
+  }
+}

@@ -6,7 +6,7 @@ import submit_galform_job as sj
 
 def test_submit_job_success(tmp_path, monkeypatch):
     # pick an available simulation key from configs
-    sim_key = next(iter(sj.SIMULATION_CONFIGS))
+    sim_key = 'L800'
 
     # create minimal galform dir expected by GalformSubmitter
     gdir = tmp_path / 'galform'
@@ -33,7 +33,7 @@ def test_submit_job_success(tmp_path, monkeypatch):
 
 
 def test_submit_job_non_transient_failure_raises(tmp_path, monkeypatch):
-    sim_key = next(iter(sj.SIMULATION_CONFIGS))
+    sim_key = 'L800'
     # create minimal galform dir
     gdir = tmp_path / 'galform'
     build = gdir / 'build'

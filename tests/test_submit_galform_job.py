@@ -57,7 +57,7 @@ def test_galform_submitter_initialization():
         assert submitter.account == 'durham'
         assert submitter.walltime == '72:00:00'
         assert len(submitter.iz_list) > 0
-        assert submitter.nvol_range == '0-161'
+        assert submitter.nvol_range == '1-1024'
         assert submitter.output_base_dir == Path(f"/cosma5/data/durham/{os.environ.get('USER', Path.home().name)}")
         assert submitter.output_folder_name == 'Galform_Out'
 
@@ -131,7 +131,7 @@ def test_create_slurm_script():
         assert 'set Nbody_sim = L800' in script_content
         assert 'set iz        = 100' in script_content
         assert '@ slurm_task_id = ${SLURM_ARRAY_TASK_ID}' in script_content
-        assert '@ ivol        = $slurm_task_id + 0 - 2' in script_content
+        assert '@ ivol        = $slurm_task_id + 1 - 2' in script_content
         # Check that galform dir is referenced
         assert f'cd {gdir}' in script_content
         # Check Fortran endianness conversion defaults are present
@@ -191,13 +191,13 @@ def test_simulation_configs():
 
     l800 = SIMULATION_CONFIGS['L800']
     assert l800.iz_list == [271, 207, 176, 155, 142, 120, 105, 100, 82]
-    assert l800.nvol_range == '0-161'
+    assert l800.nvol_range == '1-1024'
     assert l800.omega0 == 0.307
     assert l800.h0 == 0.6777
 
     for name, cfg in SIMULATION_CONFIGS.items():
         assert isinstance(cfg, SimulationConfig)
-        assert isinstance(cfg.iz_list, list)
+        assert cfg.iz_list is None or isinstance(cfg.iz_list, list)
         assert isinstance(cfg.nvol_range, str)
         assert cfg.omega0 > 0
         assert cfg.h0 > 0
