@@ -21,7 +21,6 @@ from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Dict, List, Optional
 
-
 # ---------------------------------------------------------------------------
 # Data classes for simulation / model / dust configuration
 # ---------------------------------------------------------------------------
