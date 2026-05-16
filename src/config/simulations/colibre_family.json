@@ -13,7 +13,7 @@
     "nvol_range": "1-64",
     "omega0": 0.304611,
     "omegab": 0.0486,
-    "pk_file": "Power_Spec/pk_COLIBRE_norm.dat",
+    "pk_file": "Power_Spec/pk_FLAMINGO_DMO_FIDUCIAL.dat",
     "sigma8": 0.8159,
     "snapshot_file": "/cosma8/data/dp004/jch/COLIBRE/HBT/L100_m6/DMO/trees/redshift_list.txt",
     "volume": 315821.241
