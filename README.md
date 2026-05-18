@@ -1,5 +1,7 @@
 # galform_execution
 
+[![CI](https://github.com/OscarHickman/galform_execution/actions/workflows/ci.yml/badge.svg)](https://github.com/OscarHickman/galform_execution/actions/workflows/ci.yml)
+
 a SLURM submitter for running GALFORM on COSMA.
 
 ## Setup
