@@ -255,28 +255,28 @@ def _parse_nvol_range(nvol_range: str) -> tuple[int, int]:
 
     if "-" in raw:
         parts = raw.split("-", maxsplit=1)
-        if len(parts) != 2 or not parts[0].strip() or not parts[1].strip():
-            raise ValueError(
-                f"Invalid nvol range '{nvol_range}'. Expected 'start-end'."
-            )
-        start = int(parts[0].strip())
-        end = int(parts[1].strip())
-    else:
-        start = int(raw)
-        end = start
+        if len(parts) != 2:
+            raise ValueError(f"Invalid nvol range: {raw}")
+        try:
+            return int(parts[0]), int(parts[1])
+        except ValueError as e:
+            raise ValueError(f"Invalid nvol range (must be integers): {raw}") from e
 
-    if end < start:
-        raise ValueError(f"Invalid nvol range '{nvol_range}'. End must be >= start.")
-    return start, end
+    try:
+        val = int(raw)
+        return val, val
+    except ValueError as e:
+        raise ValueError(f"Invalid nvol range (must be integer or range): {raw}") from e
 
 
 # ---------------------------------------------------------------------------
-# Main class
+# Core: GALFORM Job Submitter
 # ---------------------------------------------------------------------------
 
 
 class GalformSubmitter:
-    """Handle submission of GALFORM jobs to SLURM.
+    """
+    Orchestrates the submission of GALFORM N-body runs to SLURM.
 
     Instead of concatenating a legacy csh run script, this class generates
     a complete tcsh script that sets up the GALFORM input parameter file,
@@ -306,6 +306,7 @@ class GalformSubmitter:
         input_overrides: Optional[Dict[str, str]] = None,
         output_redshifts: Optional[List[float]] = None,
         output_iz_list: Optional[List[int]] = None,
+        galform_exe: Optional[str] = None,
         submit_retries: int = 4,
         submit_retry_delay_s: float = 15.0,
         submit_retry_backoff: float = 2.0,
@@ -343,6 +344,7 @@ class GalformSubmitter:
             output_iz_list: Explicit list of snapshots to convert to redshifts
                 via ``snapshot_file`` and write into ``zout``. Mutually
                 exclusive with ``output_redshifts``.
+            galform_exe: Path to a custom GALFORM executable.
             submit_retries: Number of attempts for SLURM job submission when
                 transient scheduler overload errors are detected.
             submit_retry_delay_s: Base retry delay in seconds.
@@ -358,6 +360,7 @@ class GalformSubmitter:
         self.account = account
         self.walltime = walltime
         self.stellar_pop_dir = stellar_pop_dir
+        self.galform_exe_override = Path(galform_exe) if galform_exe else None
         self.run_flags = run_flags if run_flags is not None else load_run_flags_config()
         self.output_folder_name = output_folder_name
         self.input_overrides = dict(input_overrides) if input_overrides else {}
@@ -444,7 +447,10 @@ class GalformSubmitter:
         # Validate
         if not self.galform_dir.is_dir():
             raise FileNotFoundError(f"GALFORM directory not found: {self.galform_dir}")
-        galform_exe = self.galform_dir / "build" / "galform2"
+        if self.galform_exe_override:
+            galform_exe = self.galform_exe_override
+        else:
+            galform_exe = self.galform_dir / "build" / "galform2"
         if not galform_exe.exists():
             raise FileNotFoundError(f"GALFORM executable not found: {galform_exe}")
 
@@ -845,6 +851,10 @@ exit
             f"eval `/usr/bin/tclsh {modulecmd} csh load {m}`" for m in self.modules
         )
 
+        custom_exe_env = ""
+        if self.galform_exe_override:
+            custom_exe_env = f"setenv GALFORM2_EXE_OVERRIDE {self.galform_exe_override}"
+
         script = f"""#!/bin/tcsh -ef
 #
 #SBATCH --ntasks 1
@@ -857,6 +867,9 @@ exit
 
 # ---- environment ----
 {module_lines}
+
+# ---- custom executable ----
+{custom_exe_env}
 
 # Ensure unformatted big-endian stellar population files are readable.
 # Only set defaults if not already defined by the user environment.
@@ -911,7 +924,9 @@ mkdir -p $output_dir
 echo iz= $iz  z= $zname >! $model_dir/iz${{iz}}/zsnap.dat
 
 # ---- executables ----
+set build_dir = ./build/
 set GALFORM2_EXE       = ${{build_dir}}/galform2
+if ( "$GALFORM2_EXE_OVERRIDE" != "" ) set GALFORM2_EXE = $GALFORM2_EXE_OVERRIDE
 set NETA_AVE_DISK_EXE  = ${{build_dir}}/neta_ave_disk
 set NETA_AVE_BURST_EXE = ${{build_dir}}/neta_ave_burst
 set SAMPLE_GALS_EXE    = ${{build_dir}}/sample_gals
@@ -1065,6 +1080,10 @@ Examples:
         help="Folder name under the base output directory (default: Galform_Out)",
     )
     parser.add_argument("--log-path", help="Directory for SLURM log files")
+    parser.add_argument(
+        "--galform-exe",
+        help="Path to a custom GALFORM executable (overrides build/galform2)",
+    )
     parser.add_argument(
         "--partition", default="cosma5", help="SLURM partition (default: cosma5)"
     )
@@ -1252,6 +1271,7 @@ Examples:
             input_overrides=input_overrides,
             output_redshifts=args.output_z_list,
             output_iz_list=args.output_iz_list,
+            galform_exe=args.galform_exe,
         )
         submitter.submit_all_jobs(dry_run=args.dry_run)
         return 0

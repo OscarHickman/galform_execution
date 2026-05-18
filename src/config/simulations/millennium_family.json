@@ -17,7 +17,7 @@
     ],
     "lambda0": 0.693,
     "lbox": 542.16,
-    "mpart": 106100000.0,
+    "mpart": 106064600.0,
     "nbody_trees_dir": "/cosma5/data/jch/Galform/Merger_Trees/P-Millennium/Updated_Trees/all_snaps",
     "nvol_range": "1-1024",
     "omega0": 0.307,
@@ -37,8 +37,8 @@
       63
     ],
     "lambda0": 0.75,
-    "lbox": null,
-    "mpart": null,
+    "lbox": 500.0,
+    "mpart": 860656704.0,
     "nbody_trees_dir": "/cosma5/data/jch/Galform/Merger_Trees/Millennium/new",
     "nvol_range": "1-64",
     "omega0": 0.25,
@@ -46,7 +46,7 @@
     "pk_file": "Power_Spec/pk_Mill.dat",
     "sigma8": 0.9,
     "snapshot_file": "/cosma5/data/jch/Galform/Merger_Trees/Millennium/new/redshift_list",
-    "volume": 0
+    "volume": 1953125.0
   },
   "Mill2": {
     "aquarius_particle_file": "/cosma5/data/jch/Galform/Merger_Trees/Millennium2/new/particle_lists/particle_list_067",
@@ -54,13 +54,14 @@
     "h0": 0.73,
     "iz0": 67,
     "iz_list": [
+      40,
       67
     ],
     "lambda0": 0.75,
-    "lbox": null,
-    "mpart": null,
+    "lbox": 100.0,
+    "mpart": 6885254.0,
     "nbody_trees_dir": "/cosma5/data/jch/Galform/Merger_Trees/Millennium2/new",
-    "nvol_range": "1-10",
+    "nvol_range": "1-64",
     "omega0": 0.25,
     "omegab": 0.045,
     "pk_file": "Power_Spec/pk_Mill.dat",
@@ -77,8 +78,8 @@
       61
     ],
     "lambda0": 0.728,
-    "lbox": null,
-    "mpart": null,
+    "lbox": 500.0,
+    "mpart": 936394560.0,
     "nbody_trees_dir": "/cosma5/data/jch/Galform/Merger_Trees/MillGas/dm/500/new/",
     "nvol_range": "1-10",
     "omega0": 0.272,
@@ -89,6 +90,7 @@
     "volume": 1953125.0
   },
   "MillGas62.5": {
+    "_note": "Tree files not present on disk — lbox/mpart unverified.",
     "aquarius_particle_file": "/cosma5/data/jch/Galform/Merger_Trees/MillGas/dm/62.5/new/particle_lists/particle_list_061",
     "aquarius_tree_file": "/cosma5/data/jch/Galform/Merger_Trees/MillGas/dm/62.5/new/treedir_061/tree_061",
     "h0": 0.704,
@@ -117,8 +119,8 @@
       63
     ],
     "lambda0": 0.75,
-    "lbox": null,
-    "mpart": null,
+    "lbox": 62.5,
+    "mpart": 860656704.0,
     "nbody_trees_dir": "/cosma5/data/jch/MilliMillennium/trees/",
     "nvol_range": "1-8",
     "omega0": 0.25,
@@ -126,6 +128,6 @@
     "pk_file": "Power_Spec/pk_Mill.dat",
     "sigma8": 0.9,
     "snapshot_file": "/cosma5/data/jch/MilliMillennium/trees/redshift_list",
-    "volume": 0
+    "volume": 30517.578
   }
 }

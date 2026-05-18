@@ -11,10 +11,10 @@
     "mpart": 7847050.0,
     "nbody_trees_dir": "/cosma8/data/dp004/jch/COLIBRE/HBT/L100_m6/DMO/trees",
     "nvol_range": "1-64",
-    "omega0": 0.304611,
+    "omega0": 0.306078,
     "omegab": 0.0486,
     "pk_file": "Power_Spec/pk_FLAMINGO_DMO_FIDUCIAL.dat",
-    "sigma8": 0.8159,
+    "sigma8": 0.807,
     "snapshot_file": "/cosma8/data/dp004/jch/COLIBRE/HBT/L100_m6/DMO/trees/redshift_list.txt",
     "volume": 315821.241
   },

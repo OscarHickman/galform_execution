@@ -15,7 +15,7 @@
     "omegab": 0.0486,
     "pk_file": "Power_Spec/pk_FLAMINGO_DMO_FIDUCIAL.dat",
     "sigma8": 0.807,
-    "snapshot_file": "none",
-    "volume": 2467353.4453125
+    "snapshot_file": "/cosma/apps/durham/dc-hick2/galform_analysis/src/redshift_lists/FLAMINGO-L1000N1800.txt",
+    "volume": 315821241.0
   }
 }
