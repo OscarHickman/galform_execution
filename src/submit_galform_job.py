@@ -142,7 +142,9 @@ def load_simulation_configs(
         raw = _load_json(path)
 
     return {
-        name: SimulationConfig(**{k: v for k, v in cfg.items() if not k.startswith("_")})
+        name: SimulationConfig(
+            **{k: v for k, v in cfg.items() if not k.startswith("_")}
+        )
         for name, cfg in raw.items()
     }
 
@@ -407,7 +409,9 @@ class GalformSubmitter:
         # Resolve simulation config
         if nbody_sim in SIMULATION_CONFIGS:
             self.sim_config = SIMULATION_CONFIGS[nbody_sim]
-            default_iz_list = list(self.sim_config.iz_list) if self.sim_config.iz_list else []
+            default_iz_list = (
+                list(self.sim_config.iz_list) if self.sim_config.iz_list else []
+            )
             self.iz_list = iz_list if iz_list is not None else default_iz_list
             if nvol is not None and nvol_range is not None:
                 raise ValueError("Specify only one of nvol and nvol_range")
