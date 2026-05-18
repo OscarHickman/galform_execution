@@ -190,7 +190,7 @@ def test_simulation_configs():
     assert 'EagleDM' in SIMULATION_CONFIGS
 
     l800 = SIMULATION_CONFIGS['L800']
-    assert l800.iz_list == [271, 207, 176, 155, 142, 120, 105, 100, 82]
+    assert l800.iz_list == [271, 207, 176, 155, 142, 121, 120, 105, 100, 82]
     assert l800.nvol_range == '1-1024'
     assert l800.omega0 == 0.307
     assert l800.h0 == 0.6777
