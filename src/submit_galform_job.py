@@ -930,7 +930,7 @@ echo iz= $iz  z= $zname >! $model_dir/iz${{iz}}/zsnap.dat
 # ---- executables ----
 set build_dir = ./build/
 set GALFORM2_EXE       = ${{build_dir}}/galform2
-if ( "$GALFORM2_EXE_OVERRIDE" != "" ) set GALFORM2_EXE = $GALFORM2_EXE_OVERRIDE
+if ( $?GALFORM2_EXE_OVERRIDE ) set GALFORM2_EXE = $GALFORM2_EXE_OVERRIDE
 set NETA_AVE_DISK_EXE  = ${{build_dir}}/neta_ave_disk
 set NETA_AVE_BURST_EXE = ${{build_dir}}/neta_ave_burst
 set SAMPLE_GALS_EXE    = ${{build_dir}}/sample_gals
