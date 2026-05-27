@@ -22,11 +22,14 @@ A Python-based utility to manage GALFORM N-body simulation submissions to SLURM 
 ## Installation
 
 ```bash
-# Clone the repository
+# Install the package and its dependencies directly from PyPI using uv
+uv pip install galform_execution
+```
+
+For development installation from source:
+```bash
 git clone https://github.com/OscarHickman/galform_execution.git
 cd galform_execution
-
-# Install the package and its dependencies using uv
 uv pip install -e .
 ```
 
