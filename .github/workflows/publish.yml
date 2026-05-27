@@ -8,6 +8,10 @@ on:
 jobs:
   publish-pypi:
     runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write  # IMPORTANT: mandatory for trusted publishing
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -19,11 +23,7 @@ jobs:
           python-version: '3.12'
 
       - name: Build package
-        run: |
-          uv build
+        run: uv build
 
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@v1.5.1
-        with:
-          user: __token__
-          password: ${{ secrets.PYPI_API_TOKEN }}
+        uses: pypa/gh-action-pypi-publish@release/v1

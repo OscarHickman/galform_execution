@@ -9,6 +9,9 @@ on:
 jobs:
   build-test-lint:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -17,7 +20,7 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-          python-version: '3.12'
+          python-version: ${{ matrix.python-version }}
 
       - name: Install GSL
         run: sudo apt-get update && sudo apt-get install -y libgsl-dev
@@ -37,10 +40,7 @@ jobs:
 
       - name: Run Black (format check)
         run: |
-          # Black's safety check can fail on newer-targeted source when running
-          # on an older Python. Explicitly target the runner Python (312) so
-          # formatting is compared using the correct grammar.
-          uv run black --check --target-version py312 galform_execution
+          uv run black --check galform_execution tests
 
       - name: Build package
         run: |
