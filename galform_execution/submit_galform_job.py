@@ -250,7 +250,7 @@ def _resolve_log_path(explicit: Optional[str], output_folder_name: str) -> Path:
     return _default_cosma_user_root() / output_folder_name / "logs"
 
 
-def _parse_nvol_range(nvol_range: str) -> tuple[int, int]:
+def _parse_nvol_range(nvol_range: str) -> Tuple[int, int]:
     """Parse a legacy nvol range string (e.g. ``'12'`` or ``'1001-1024'``)."""
     raw = str(nvol_range).strip()
     if not raw:
