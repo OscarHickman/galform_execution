@@ -106,6 +106,7 @@ _DUST_CONFIG_PATH = _CONFIG_DIR / "dust_params.json"
 _MODEL_CONFIG_PATH = _CONFIG_DIR / "models.json"
 _RUN_FLAGS_CONFIG_PATH = _CONFIG_DIR / "run_flags.json"
 _LEGACY_RUN_FLAGS_CONFIG_PATH = Path(__file__).parent / "run_flags.json"
+_REDSHIFT_LISTS_DIR = _CONFIG_DIR / "redshift_lists"
 
 # SLURM can transiently reject submissions during scheduler pressure.
 _TRANSIENT_SUBMIT_ERROR_MARKERS = (
@@ -514,9 +515,14 @@ class GalformSubmitter:
                 f"SimulationConfig for '{self.nbody_sim}' has no 'iz0' — "
                 "set it in the simulation JSON before submitting."
             )
+
+        snapshot_file = Path(sim.snapshot_file)
+        if not snapshot_file.is_absolute():
+            snapshot_file = _REDSHIFT_LISTS_DIR / snapshot_file
+
         lines = [
             "# ---- N-body simulation parameters ----",
-            f"set snapshot_file          = {sim.snapshot_file}",
+            f"set snapshot_file          = {snapshot_file}",
             f"set aquarius_tree_file     = {sim.aquarius_tree_file}",
             f"set aquarius_particle_file = {sim.aquarius_particle_file}",
             f"set volume     = {sim.volume}",
@@ -627,6 +633,9 @@ class GalformSubmitter:
 
         snapshot_map: Dict[int, float] = {}
         snapshot_file = Path(self.sim_config.snapshot_file)
+        if not snapshot_file.is_absolute():
+            snapshot_file = _REDSHIFT_LISTS_DIR / snapshot_file
+
         if not snapshot_file.exists():
             raise FileNotFoundError(f"Snapshot file not found: {snapshot_file}")
 

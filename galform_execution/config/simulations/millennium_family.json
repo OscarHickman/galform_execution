@@ -25,7 +25,7 @@
     "omegab": 0.0482519,
     "pk_file": "Power_Spec/pk_EAGLE_norm.dat",
     "sigma8": 0.8288,
-    "snapshot_file": "/cosma5/data/jch/Galform/Merger_Trees/P-Millennium/Updated_Trees/all_snaps/redshift_list.txt",
+    "snapshot_file": "L800.txt",
     "volume": 155626.1
   },
   "Mill1": {
@@ -46,7 +46,7 @@
     "omegab": 0.045,
     "pk_file": "Power_Spec/pk_Mill.dat",
     "sigma8": 0.9,
-    "snapshot_file": "/cosma5/data/jch/Galform/Merger_Trees/Millennium/new/redshift_list",
+    "snapshot_file": "Mill1.txt",
     "volume": 1953125.0
   },
   "Mill2": {
@@ -67,7 +67,7 @@
     "omegab": 0.045,
     "pk_file": "Power_Spec/pk_Mill.dat",
     "sigma8": 0.9,
-    "snapshot_file": "/cosma5/data/jch/Galform/Merger_Trees/Millennium2/new/redshift_list",
+    "snapshot_file": "Mill2.txt",
     "volume": 15625.0
   },
   "MillGas": {
