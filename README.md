@@ -16,9 +16,9 @@ This tool replaces legacy `tcsh`/`csh` scripts by dynamically generating self-co
 git clone https://github.com/OscarHickman/galform_execution.git
 cd galform_execution
 
-# Install dependencies and package
-pip install -r requirements.txt
-pip install -e .
+# Install dependencies and package using uv
+uv pip install -r requirements.txt
+uv pip install -e .
 ```
 
 ## Usage

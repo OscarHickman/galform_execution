@@ -15,10 +15,10 @@ A Python-based utility to manage GALFORM N-body simulation submissions to SLURM 
 
 ### Setup
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+# Install dependencies using uv
+uv pip install -r requirements.txt
 # Install the package in editable mode
-pip install -e .
+uv pip install -e .
 ```
 
 ### Submitting Jobs

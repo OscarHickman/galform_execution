@@ -5,13 +5,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
-pip install -e .        # install as editable package
+# Install dependencies using uv
+uv pip install -r requirements.txt
+uv pip install -e .        # install as editable package
 
 # Run all tests
 pytest tests
-
+```
 # Run a single test
 pytest tests/test_submit_galform_job.py::test_create_slurm_script -v
 

@@ -13,9 +13,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
+          enable-cache: true
           python-version: '3.12'
 
       - name: Install GSL
@@ -23,30 +24,28 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -e .
+          uv pip install -r requirements.txt
+          uv pip install -e .
 
       - name: Run Ruff (lint and syntax)
         run: |
-          ruff check galform_execution
+          uv run ruff check galform_execution
 
       - name: Run isort (import order check)
         run: |
-          isort --check-only galform_execution
+          uv run isort --check-only galform_execution
 
       - name: Run Black (format check)
         run: |
           # Black's safety check can fail on newer-targeted source when running
-          # on an older Python. Explicitly target the runner Python (3.12) so
+          # on an older Python. Explicitly target the runner Python (312) so
           # formatting is compared using the correct grammar.
-          black --check --target-version py312 galform_execution
+          uv run black --check --target-version py312 galform_execution
 
       - name: Build package
         run: |
-          python -m pip install build
-          python -m build
+          uv build
 
       - name: Run tests
         run: |
-          pytest tests
+          uv run pytest tests
