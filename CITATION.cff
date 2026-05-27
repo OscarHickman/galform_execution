@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+message: "If you use this software in your research, please cite it using the metadata below."
+type: software
+title: "galform_execution"
+abstract: >
+  A Python-based utility to manage GALFORM N-body simulation submissions
+  to SLURM on COSMA. Automates SLURM batch script generation, parameter
+  injection into .input.ref files, and conditional post-processing
+  (NETA, luminosity functions, galaxy samples).
+authors:
+  - family-names: Hickman
+    given-names: Oscar
+    affiliation: "Institute for Computational Cosmology, Durham University"
+version: "0.1.5"
+date-released: "2026-05-27"
+license: MIT
+repository-code: "https://github.com/OscarHickman/galform_execution"
+url: "https://pypi.org/project/galform_execution/"
+keywords:
+  - astronomy
+  - cosmology
+  - galaxy formation
+  - semi-analytic models
+  - GALFORM
+  - SLURM
+  - HPC

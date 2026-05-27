@@ -68,6 +68,43 @@ uv run pytest tests
 uv run ruff check galform_execution
 ```
 
+## Citing this software
+
+If you use `galform_execution` in your research, please cite it. GitHub will
+show a **"Cite this repository"** button (top-right of the repo page) once
+`CITATION.cff` is committed.
+
+After connecting Zenodo (see below), each release gets a permanent DOI.
+Replace `YOUR_ZENODO_DOI` with the DOI minted on first release:
+
+```bibtex
+@software{hickman_galform_execution,
+  author    = {Hickman, Oscar},
+  title     = {galform\_execution},
+  url       = {https://github.com/OscarHickman/galform_execution},
+  doi       = {YOUR_ZENODO_DOI},
+  license   = {MIT}
+}
+```
+
+### Setting up citation infrastructure
+
+**Zenodo** (DOIs for every release) — already connected:
+Push a new version tag and the release workflow will create a GitHub Release,
+which Zenodo archives automatically and mints a DOI.
+Update `CITATION.cff` and this README with the DOI badge Zenodo provides.
+
+**Conda-forge**:
+1. Get the sha256 of the PyPI source tarball:
+   ```bash
+   curl -s https://pypi.org/pypi/galform_execution/json \
+     | python -c "import sys,json; d=json.load(sys.stdin); \
+       [print(f['digests']['sha256']) for v in d['releases'].values() \
+        for f in v if f['filename'].endswith('.tar.gz')]" | tail -1
+   ```
+2. Paste it into `recipe/meta.yaml`.
+3. Fork [conda-forge/staged-recipes](https://github.com/conda-forge/staged-recipes), copy `recipe/meta.yaml` to `recipes/galform_execution/meta.yaml`, and open a PR.
+
 ## License
 
 Distributed under the MIT License. See `LICENSE` for more information.
