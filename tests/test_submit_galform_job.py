@@ -7,10 +7,7 @@ import sys
 import os
 from unittest.mock import patch
 
-# Add src to path for imports
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src')))
-
-from submit_galform_job import (
+from galform_execution.submit_galform_job import (
     GalformSubmitter,
     RunFlags,
     SIMULATION_CONFIGS,
@@ -274,7 +271,7 @@ def test_unknown_simulation():
 
 def test_script_help_option():
     """Test that the script's help option works."""
-    script_path = Path(__file__).parent.parent / 'src' / 'submit_galform_job.py'
+    script_path = Path(__file__).parent.parent / 'galform_execution' / 'submit_galform_job.py'
 
     result = subprocess.run(
         ['python', str(script_path), '--help'],
@@ -295,7 +292,7 @@ def test_script_help_option():
 
 def test_script_list_simulations():
     """Test that the script can list available simulations."""
-    script_path = Path(__file__).parent.parent / 'src' / 'submit_galform_job.py'
+    script_path = Path(__file__).parent.parent / 'galform_execution' / 'submit_galform_job.py'
 
     result = subprocess.run(
         ['python', str(script_path), '--list-simulations'],
@@ -312,7 +309,7 @@ def test_script_list_simulations():
 
 def test_script_list_models():
     """Test that the script can list available models."""
-    script_path = Path(__file__).parent.parent / 'src' / 'submit_galform_job.py'
+    script_path = Path(__file__).parent.parent / 'galform_execution' / 'submit_galform_job.py'
 
     result = subprocess.run(
         ['python', str(script_path), '--list-models'],
@@ -366,7 +363,7 @@ def test_submit_job_remaps_large_nvol_array_indices():
 
 def test_script_dry_run():
     """Test that the script's dry-run mode works."""
-    script_path = Path(__file__).parent.parent / 'src' / 'submit_galform_job.py'
+    script_path = Path(__file__).parent.parent / 'galform_execution' / 'submit_galform_job.py'
 
     with tempfile.TemporaryDirectory() as tmpdir:
         gdir = _make_galform_dir(tmpdir)
@@ -396,7 +393,7 @@ def test_script_dry_run():
 
 def test_script_dry_run_with_nvol_range():
     """Test dry-run output for legacy-style nvol array submission."""
-    script_path = Path(__file__).parent.parent / 'src' / 'submit_galform_job.py'
+    script_path = Path(__file__).parent.parent / 'galform_execution' / 'submit_galform_job.py'
 
     with tempfile.TemporaryDirectory() as tmpdir:
         gdir = _make_galform_dir(tmpdir)
@@ -487,8 +484,8 @@ def test_submit_job_retries_transient_error_then_succeeds():
             stderr=b'',
         )
 
-        with patch('submit_galform_job.time.sleep') as mocked_sleep:
-            with patch('submit_galform_job.subprocess.run', side_effect=[transient_err, success]) as mocked_run:
+        with patch('galform_execution.submit_galform_job.time.sleep') as mocked_sleep:
+            with patch('galform_execution.submit_galform_job.subprocess.run', side_effect=[transient_err, success]) as mocked_run:
                 job_id = submitter.submit_job(iz=271, dry_run=False)
 
         assert job_id == '12345'
@@ -517,8 +514,8 @@ def test_submit_job_fails_immediately_for_non_transient_error():
             stderr=b'sbatch: error: Invalid account or account/partition combination specified\n',
         )
 
-        with patch('submit_galform_job.time.sleep') as mocked_sleep:
-            with patch('submit_galform_job.subprocess.run', side_effect=fatal_err) as mocked_run:
+        with patch('galform_execution.submit_galform_job.time.sleep') as mocked_sleep:
+            with patch('galform_execution.submit_galform_job.subprocess.run', side_effect=fatal_err) as mocked_run:
                 try:
                     submitter.submit_job(iz=271, dry_run=False)
                     assert False, 'Expected RuntimeError for non-transient submission failure'
@@ -553,8 +550,8 @@ def test_submit_job_fails_after_retries_exhausted_for_transient_error():
             ),
         )
 
-        with patch('submit_galform_job.time.sleep') as mocked_sleep:
-            with patch('submit_galform_job.subprocess.run', side_effect=[transient_err, transient_err, transient_err]) as mocked_run:
+        with patch('galform_execution.submit_galform_job.time.sleep') as mocked_sleep:
+            with patch('galform_execution.submit_galform_job.subprocess.run', side_effect=[transient_err, transient_err, transient_err]) as mocked_run:
                 try:
                     submitter.submit_job(iz=271, dry_run=False)
                     assert False, 'Expected RuntimeError after retry exhaustion'

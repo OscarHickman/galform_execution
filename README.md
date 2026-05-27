@@ -1,69 +1,63 @@
 # galform_execution
 
-[![CI](https://github.com/OscarHickman/galform_execution/actions/workflows/ci.yml/badge.svg)](https://github.com/OscarHickman/galform_execution/actions/workflows/ci.yml)
+A Python-based utility to manage GALFORM N-body simulation submissions to SLURM on COSMA.
 
-a SLURM submitter for running GALFORM on COSMA.
+This tool replaces legacy `tcsh`/`csh` scripts by dynamically generating self-contained SLURM batch scripts. It handles:
+- Environment setup (modules)
+- Parameter file modification (`.input.ref` injection)
+- GALFORM execution
+- Conditional post-processing (NETA, LUM_FUN, etc.)
+- Retries on transient SLURM scheduler errors
 
-## Setup
+## Installation
 
 ```bash
+# Clone the repository
+git clone https://github.com/OscarHickman/galform_execution.git
 cd galform_execution
+
+# Install dependencies and package
 pip install -r requirements.txt
-```
-
-Optional (for imports in notebooks/scripts):
-
-```bash
 pip install -e .
 ```
 
-Examples live in `examples/`.
+## Usage
 
-## GALFORM Submission (COSMA)
+After installation, the `submit-galform-job` command is available.
 
-Main script:
-
+### Basic submission
 ```bash
-python src/submit_galform_job.py --help
+# Submit for Mill2 simulation, lc16 model, snapshot 40, subvolumes 1 to 64
+submit-galform-job --nbody-sim Mill2 --model lc16 --iz 40 --nvol 1-64 --output-folder-name Galform_Test
 ```
 
-Typical run:
-
+### Dry run
+Preview the generated SLURM script without submitting:
 ```bash
-python src/submit_galform_job.py --nbody-sim Mill2 --model lc16 --iz 40 --nvol 1-64 --output-folder-name Galform_Test
+submit-galform-job --nbody-sim Mill2 --model lc16 --iz 40 --nvol 1-64 --dry-run
 ```
 
-Dry run:
-
+### Help
 ```bash
-python src/submit_galform_job.py --nbody-sim Mill2 --model lc16 --iz 40 --nvol 1-64 --dry-run
+submit-galform-job --help
 ```
 
-## Execution Config Files
+## Configuration
 
-GALFORM execution config is stored in JSON under:
-
-- `src/config/simulations/*.json`
-- `src/config/models.json`
-- `src/config/dust_params.json`
-- `src/config/run_flags.json`
-
-Edit these files to change defaults without touching Python code.
+The tool uses JSON configuration files located in `galform_execution/config/`:
+- `simulations/*.json`: N-body simulation paths and parameters.
+- `models.json`: GALFORM model definitions.
+- `dust_params.json`: Dust model parameters.
+- `run_flags.json`: Pipeline execution switches.
 
 ## Development
 
-Run tests:
-
+### Tests
 ```bash
-pytest tests -q
+pytest tests
 ```
 
-Lint:
-
+### Linting
 ```bash
-ruff check src/galform_execution
+ruff check galform_execution
 ```
-
-## Author
-
-Oscar Hickman

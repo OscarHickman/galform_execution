@@ -1,7 +1,7 @@
 import subprocess
 import pytest
 
-import submit_galform_job as sj
+import galform_execution.submit_galform_job as sj
 
 
 def test_submit_job_success(tmp_path, monkeypatch):

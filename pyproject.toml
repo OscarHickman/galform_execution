@@ -1,6 +1,6 @@
 [project]
 name = "galform_execution"
-version = "0.0.0"
+version = "0.1.0"
 description = "GALFORM execution helper utilities"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -15,13 +15,17 @@ classifiers = [
 ]
 urls = { "Homepage" = "https://github.com/OscarHickman/galform_execution" }
 
+[project.scripts]
+submit-galform-job = "galform_execution.submit_galform_job:main"
+
 [build-system]
 requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-py-modules = ["submit_galform_job"]
+packages = ["galform_execution"]
+include-package-data = true
 
-[tool.setuptools.package-dir]
-"" = "src"
+[tool.setuptools.package-data]
+galform_execution = ["config/**/*.json"]
 

@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 # Install dependencies
 pip install -r requirements.txt
-pip install -e .        # optional, for importable package
+pip install -e .        # install as editable package
 
 # Run all tests
 pytest tests
@@ -16,27 +16,30 @@ pytest tests
 pytest tests/test_submit_galform_job.py::test_create_slurm_script -v
 
 # Lint
-ruff check src
+ruff check galform_execution
 
-# Preview a job submission without submitting
-python src/submit_galform_job.py --nbody-sim Mill2 --model lc16 --iz 40 --nvol 1-64 --dry-run
+# Preview a job submission without submitting (using console script)
+submit-galform-job --nbody-sim Mill2 --model lc16 --iz 40 --nvol 1-64 --dry-run
+
+# Preview using python module
+python -m galform_execution --nbody-sim Mill2 --model lc16 --iz 40 --nvol 1-64 --dry-run
 
 # List available simulations / models
-python src/submit_galform_job.py --list-simulations
-python src/submit_galform_job.py --list-models
+submit-galform-job --list-simulations
+submit-galform-job --list-models
 ```
 
 ## Architecture
 
-The entire library lives in a single module: `src/submit_galform_job.py`. It replaces the legacy `qsub_galform_Nbody_example.csh` + `run_galform_Nbody_example.csh` workflow by generating complete tcsh SLURM batch scripts from Python-controlled configuration.
+The library is structured as a Python package `galform_execution`. The core logic resides in `galform_execution/submit_galform_job.py`. It replaces the legacy `qsub_galform_Nbody_example.csh` + `run_galform_Nbody_example.csh` workflow by generating complete tcsh SLURM batch scripts from Python-controlled configuration.
 
 ### Core class: `GalformSubmitter`
 
 `GalformSubmitter.__init__` resolves three layers of configuration:
 
-1. **Simulation config** (`SimulationConfig`) — N-body tree paths, cosmological parameters, snapshot list, subvolume range. Loaded from `src/config/simulations/*.json` (one JSON file per simulation family; merged at load time).
-2. **Model config** (`ModelConfig`) — references a `.input.ref` base parameter file and a dust profile. Loaded from `src/config/models.json`; each model refers to a named dust profile in `src/config/dust_params.json`.
-3. **Run flags** (`RunFlags`) — boolean switches controlling which pipeline stages execute (compile, galform, neta, lum_fun, etc.). Defaults come from `src/config/run_flags.json`; CLI flags override them.
+1. **Simulation config** (`SimulationConfig`) — N-body tree paths, cosmological parameters, snapshot list, subvolume range. Loaded from `galform_execution/config/simulations/*.json` (one JSON file per simulation family; merged at load time).
+2. **Model config** (`ModelConfig`) — references a `.input.ref` base parameter file and a dust profile. Loaded from `galform_execution/config/models.json`; each model refers to a named dust profile in `galform_execution/config/dust_params.json`.
+3. **Run flags** (`RunFlags`) — boolean switches controlling which pipeline stages execute (compile, galform, neta, lum_fun, etc.). Defaults come from `galform_execution/config/run_flags.json`; CLI flags override them.
 
 `create_slurm_script(iz)` assembles a complete tcsh script for one snapshot (`iz`). The script:
 - Sets up COSMA modules via `modulecmd.tcl` (not relying on interactive shell startup)
@@ -48,7 +51,7 @@ The entire library lives in a single module: `src/submit_galform_job.py`. It rep
 
 `submit_all_jobs()` iterates over `iz_list` calling `submit_job` for each snapshot.
 
-### Configuration files (`src/config/`)
+### Configuration files (`galform_execution/config/`)
 
 | File | Purpose |
 |------|---------|
