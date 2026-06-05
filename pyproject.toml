@@ -1,6 +1,6 @@
 [project]
 name = "galform_execution"
-version = "0.1.5"
+version = "0.1.6"
 description = "GALFORM execution helper utilities"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -27,5 +27,5 @@ packages = ["galform_execution"]
 include-package-data = true
 
 [tool.setuptools.package-data]
-galform_execution = ["config/**/*.json"]
+galform_execution = ["config/**/*.json", "config/**/*.txt"]
 
