@@ -20,6 +20,7 @@
     "volume": 5451.776
   },
   "DoveWDM.clean": {
+    "_note": "Paths use /gpfs/ mount (personal allocation, not a standard COSMA path). Verify accessibility before submitting.",
     "aquarius_particle_file": "/gpfs/data/dph3apc/dove/wdm/trees_cleaned/particle_lists/particle_list_079",
     "aquarius_tree_file": "/gpfs/data/dph3apc/dove/wdm/trees_cleaned/treedir_079/tree_079",
     "h0": 0.704,

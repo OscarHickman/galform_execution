@@ -1,6 +1,4 @@
-pytest
-ruff
-# runtime deps (none required for the pure wrapper)
-black
-isort
-
+pytest>=7.0,<9
+ruff>=0.4,<1
+black>=24.0,<26
+isort>=5.12,<6

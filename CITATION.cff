@@ -11,7 +11,7 @@ authors:
   - family-names: Hickman
     given-names: Oscar
     affiliation: "Institute for Computational Cosmology, Durham University"
-version: "0.1.5"
+version: "0.1.6"
 date-released: "2026-05-27"
 license: MIT
 repository-code: "https://github.com/OscarHickman/galform_execution"

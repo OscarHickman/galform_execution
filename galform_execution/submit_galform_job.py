@@ -47,7 +47,6 @@ class SimulationConfig:
     iz0: Optional[int] = None
     lbox: Optional[float] = None
     mpart: Optional[float] = None
-    data_filesystem: Optional[str] = None
 
 
 @dataclass
@@ -1168,25 +1167,21 @@ Examples:
     tree_group.add_argument(
         "--build-galaxy-trees",
         action="store_true",
-        default=None,
         help="Set build_galaxy_trees = .true. in GALFORM input",
     )
     tree_group.add_argument(
         "--no-build-galaxy-trees",
         action="store_true",
-        default=None,
         help="Set build_galaxy_trees = .false. in GALFORM input",
     )
     tree_group.add_argument(
         "--output-halo-trees",
         action="store_true",
-        default=None,
         help="Set output_halo_trees = .true. in GALFORM input",
     )
     tree_group.add_argument(
         "--no-output-halo-trees",
         action="store_true",
-        default=None,
         help="Set output_halo_trees = .false. in GALFORM input",
     )
 

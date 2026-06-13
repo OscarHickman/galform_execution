@@ -1,19 +1,16 @@
 {
   "b06": {
     "base_inputs_file": "Bower06_Nbody_MilliMil.input.ref",
-    "dust_params": null,
     "dust_profile": "baugh05",
     "extra_replacements": {}
   },
   "gp14": {
     "base_inputs_file": "Gonzalez13_Nbody_MillGas.input.ref",
-    "dust_params": null,
     "dust_profile": "baugh05",
     "extra_replacements": {}
   },
   "gp14.satf": {
     "base_inputs_file": "Gonzalez13_Nbody_MillGas.input.ref",
-    "dust_params": null,
     "dust_profile": "baugh05",
     "extra_replacements": {
       "Saturate_Feedback": ".true.",
@@ -22,31 +19,26 @@
   },
   "gp18": {
     "base_inputs_file": "Gonzalez13_Nbody_MillGas.input.ref",
-    "dust_params": null,
     "dust_profile": "baugh05",
     "extra_replacements": {}
   },
   "lc16": {
     "base_inputs_file": "Lacey16_Nbody_MillGas.input.ref",
-    "dust_params": null,
     "dust_profile": "lacey16",
     "extra_replacements": {}
   },
   "lc16.newSMBH": {
     "base_inputs_file": "Lacey16_Nbody_MillGas.input.ref",
-    "dust_params": null,
     "dust_profile": "lacey16",
     "extra_replacements": {}
   },
   "lc16.newmg": {
     "base_inputs_file": "Lacey16_newmg_Nbody_L800.input.ref",
-    "dust_params": null,
     "dust_profile": "lacey16",
     "extra_replacements": {}
   },
   "lc16.newmg.kenn83.vhot": {
     "base_inputs_file": "Lacey16_newmg_Nbody_L800.input.ref",
-    "dust_params": null,
     "dust_profile": "lacey16",
     "extra_replacements": {
       "nmf": "1",

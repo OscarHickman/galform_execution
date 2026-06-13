@@ -2,7 +2,6 @@
   "FLAMINGO-L1000N1800": {
     "aquarius_particle_file": "/cosma8/data/dp004/jch/FLAMINGO/HBT/L1000N1800/DMO_FIDUCIAL/trees/particle_lists/particle_list_077",
     "aquarius_tree_file": "/cosma8/data/dp004/jch/FLAMINGO/HBT/L1000N1800/DMO_FIDUCIAL/trees/tree_077",
-    "data_filesystem": "cosma8",
     "h0": 0.681,
     "iz0": 77,
     "iz_list": [77, 67, 57, 37],
