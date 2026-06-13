@@ -1,15 +1,5 @@
 #!/usr/bin/env python3
-"""
-Submit GALFORM N-body tree runs to SLURM batch queue on COSMA.
-
-This script replaces the legacy qsub_galform_Nbody_example.csh +
-run_galform_Nbody_example.csh workflow. It generates a complete tcsh
-run script with all simulation parameters, model configurations, and
-post-processing steps, then submits it as a SLURM array job.
-
-Author: Oscar Hickman
-Date: November 2025
-"""
+"""Submit GALFORM N-body tree runs to SLURM batch queue on COSMA."""
 
 import argparse
 import json
@@ -20,11 +10,6 @@ import time
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-
-# ---------------------------------------------------------------------------
-# Data classes for simulation / model / dust configuration
-# ---------------------------------------------------------------------------
-
 
 @dataclass
 class SimulationConfig:
@@ -94,12 +79,8 @@ class RunFlags:
     study_stellar_mass_function: bool = True
 
 
-# ---------------------------------------------------------------------------
-# JSON-backed configurations
-# ---------------------------------------------------------------------------
 
 _CONFIG_DIR = Path(__file__).parent / "config"
-_SIMULATION_CONFIG_DIR = _CONFIG_DIR / "simulations"
 _SIMULATION_CONFIG_PATH = _CONFIG_DIR / "simulations.json"
 _DUST_CONFIG_PATH = _CONFIG_DIR / "dust_params.json"
 _MODEL_CONFIG_PATH = _CONFIG_DIR / "models.json"
@@ -107,7 +88,19 @@ _RUN_FLAGS_CONFIG_PATH = _CONFIG_DIR / "run_flags.json"
 _LEGACY_RUN_FLAGS_CONFIG_PATH = Path(__file__).parent / "run_flags.json"
 _REDSHIFT_LISTS_DIR = _CONFIG_DIR / "redshift_lists"
 
-# SLURM can transiently reject submissions during scheduler pressure.
+try:
+    import galform_analysis as _ga
+
+    _GA_SIM_CONFIGS = Path(_ga.__file__).parent / "sim_configs"
+except ImportError:
+    _GA_SIM_CONFIGS = None
+
+_SIMULATION_CONFIG_DIR = (
+    _GA_SIM_CONFIGS
+    if _GA_SIM_CONFIGS is not None and _GA_SIM_CONFIGS.is_dir()
+    else _CONFIG_DIR / "simulations"
+)
+
 _TRANSIENT_SUBMIT_ERROR_MARKERS = (
     "slurm temporarily unable to accept job",
     "resource temporarily unavailable",
@@ -196,9 +189,6 @@ SIMULATION_CONFIGS = load_simulation_configs()
 MODEL_CONFIGS = load_model_configs(DUST_CONFIGS)
 
 
-# ---------------------------------------------------------------------------
-# Helper: resolve log path
-# ---------------------------------------------------------------------------
 
 
 def load_run_flags_config(config_path: Optional[str] = None) -> RunFlags:
@@ -271,21 +261,8 @@ def _parse_nvol_range(nvol_range: str) -> Tuple[int, int]:
         raise ValueError(f"Invalid nvol range (must be integer or range): {raw}") from e
 
 
-# ---------------------------------------------------------------------------
-# Core: GALFORM Job Submitter
-# ---------------------------------------------------------------------------
-
-
 class GalformSubmitter:
-    """
-    Orchestrates the submission of GALFORM N-body runs to SLURM.
-
-    Instead of concatenating a legacy csh run script, this class generates
-    a complete tcsh script that sets up the GALFORM input parameter file,
-    runs the GALFORM executable, and performs post-processing — mirroring
-    ``run_galform_Nbody_example.csh`` entirely from Python-controlled
-    configuration.
-    """
+    """Orchestrates GALFORM N-body runs submitted to SLURM as tcsh array jobs."""
 
     def __init__(
         self,
@@ -313,46 +290,6 @@ class GalformSubmitter:
         submit_retry_delay_s: float = 15.0,
         submit_retry_backoff: float = 2.0,
     ):
-        """
-        Initialise the GALFORM job submitter.
-
-        Args:
-            galform_dir: Path to the GALFORM source directory containing
-                ``build/``, ``*.input.ref``, helper csh scripts, etc.
-            nbody_sim: N-body simulation label (e.g. ``'L800'``).
-            model: GALFORM model label (e.g. ``'gp14'``).
-            iz: Snapshot number for a single-job submission.
-            nvol: Subvolume range for SLURM array submission, in the same
-                format used by the legacy scripts (e.g. ``'1-10'``).
-            output_base_dir: Root directory for GALFORM outputs. Defaults to
-                ``/cosma5/data/durham/$USER``.
-            output_folder_name: Name of the output folder created under the
-                base output directory.
-            log_path: Directory for SLURM log files.
-            partition: SLURM partition.
-            account: SLURM account.
-            walltime: SLURM walltime.
-            iz_list: Override default snapshot list for array-style submission.
-            nvol_range: Override default subvolume range for array-style
-                submission (e.g. ``'0-161'``).
-            run_flags: ``RunFlags`` controlling pipeline stages.
-            stellar_pop_dir: Location of stellar-population data files.
-            modules: List of ``module load`` commands.  Defaults to the Intel
-                2024 toolchain.
-            input_overrides: Extra ``name -> value`` GALFORM input parameters
-                to inject via ``replace_variable.csh``.
-            output_redshifts: Explicit list of redshifts to write into
-                ``zout`` for a single run. Sets ``nout`` to list length.
-            output_iz_list: Explicit list of snapshots to convert to redshifts
-                via ``snapshot_file`` and write into ``zout``. Mutually
-                exclusive with ``output_redshifts``.
-            galform_exe: Path to a custom GALFORM executable.
-            submit_retries: Number of attempts for SLURM job submission when
-                transient scheduler overload errors are detected.
-            submit_retry_delay_s: Base retry delay in seconds.
-            submit_retry_backoff: Exponential backoff factor applied between
-                retry attempts.
-        """
         self.galform_dir = Path(galform_dir)
         self.nbody_sim = nbody_sim
         self.model = model
@@ -457,10 +394,6 @@ class GalformSubmitter:
             galform_exe = self.galform_dir / "build" / "galform2"
         if not galform_exe.exists():
             raise FileNotFoundError(f"GALFORM executable not found: {galform_exe}")
-
-    # ------------------------------------------------------------------
-    # Script generation helpers
-    # ------------------------------------------------------------------
 
     @staticmethod
     def _bool_to_csh(value: bool) -> str:
@@ -818,25 +751,8 @@ rm -f $galform_inputs_file
 exit
 """
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
     def create_slurm_script(self, iz: int) -> str:
-        """
-        Create the complete SLURM batch script for a given snapshot.
-
-        The generated tcsh script is fully self-contained: it sets up
-        the environment, changes to the GALFORM source directory,
-        constructs the parameter file, runs GALFORM, and performs
-        post-processing — without requiring any external csh script.
-
-        Args:
-            iz: Snapshot number.
-
-        Returns:
-            String containing the complete SLURM script.
-        """
+        """Generate the complete SLURM/tcsh batch script for snapshot iz."""
         if self.sim_config is None:
             raise ValueError(
                 f"No simulation config for '{self.nbody_sim}'. "
@@ -958,16 +874,7 @@ set SAMPLE_GALS_EXE    = ${{build_dir}}/sample_gals
         return script
 
     def submit_job(self, iz: int, dry_run: bool = False) -> Optional[str]:
-        """
-        Submit a SLURM job for a given snapshot.
-
-        Args:
-            iz: Snapshot number.
-            dry_run: If True, print the script but don't submit.
-
-        Returns:
-            Job ID if submitted, None if dry_run.
-        """
+        """Submit a SLURM job for snapshot iz; returns job ID or None if dry_run."""
         script_content = self.create_slurm_script(iz)
 
         if dry_run:
@@ -1019,15 +926,7 @@ set SAMPLE_GALS_EXE    = ${{build_dir}}/sample_gals
                 time.sleep(delay_s)
 
     def submit_all_jobs(self, dry_run: bool = False) -> List[str]:
-        """
-        Submit SLURM jobs for all snapshots in ``iz_list``.
-
-        Args:
-            dry_run: If True, print scripts but don't submit.
-
-        Returns:
-            List of submitted job IDs.
-        """
+        """Submit SLURM jobs for all snapshots in iz_list; returns list of job IDs."""
         job_ids = []
         for iz in self.iz_list:
             job_id = self.submit_job(iz, dry_run=dry_run)
@@ -1036,13 +935,7 @@ set SAMPLE_GALS_EXE    = ${{build_dir}}/sample_gals
         return job_ids
 
 
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
-
-
 def main():
-    """Main entry point for the script."""
     parser = argparse.ArgumentParser(
         description="Submit GALFORM N-body runs to SLURM batch queue on COSMA",
         formatter_class=argparse.RawDescriptionHelpFormatter,
