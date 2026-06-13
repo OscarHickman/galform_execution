@@ -88,18 +88,7 @@ _RUN_FLAGS_CONFIG_PATH = _CONFIG_DIR / "run_flags.json"
 _LEGACY_RUN_FLAGS_CONFIG_PATH = Path(__file__).parent / "run_flags.json"
 _REDSHIFT_LISTS_DIR = _CONFIG_DIR / "redshift_lists"
 
-try:
-    import galform_analysis as _ga
-
-    _GA_SIM_CONFIGS = Path(_ga.__file__).parent / "sim_configs"
-except ImportError:
-    _GA_SIM_CONFIGS = None
-
-_SIMULATION_CONFIG_DIR = (
-    _GA_SIM_CONFIGS
-    if _GA_SIM_CONFIGS is not None and _GA_SIM_CONFIGS.is_dir()
-    else _CONFIG_DIR / "simulations"
-)
+_SIMULATION_CONFIG_DIR = _CONFIG_DIR / "simulations"
 
 _TRANSIENT_SUBMIT_ERROR_MARKERS = (
     "slurm temporarily unable to accept job",
