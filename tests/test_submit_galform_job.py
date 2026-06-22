@@ -640,6 +640,162 @@ def test_multi_output_redshifts_set_nout_and_zout():
         )
 
 
+def test_create_packed_job_script():
+    """Packed bash wrapper should use cpus-per-task instead of --array."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        gdir = _make_galform_dir(tmpdir)
+        log_path = Path(tmpdir) / "logs"
+
+        submitter = GalformSubmitter(
+            galform_dir=gdir,
+            nbody_sim="L800",
+            model="gp14",
+            iz=100,
+            nvol="1-64",
+            log_path=str(log_path),
+            partition="cosma8-shm",
+            account="durham",
+            walltime="72:00:00",
+        )
+
+        tcsh_path = f"{tmpdir}/logs/L800/gp14_iz100.csh"
+        script = submitter.create_packed_job_script(iz=100, tcsh_path=tcsh_path)
+
+        assert "#!/bin/bash" in script
+        assert "#SBATCH --ntasks=1" in script
+        assert "#SBATCH --cpus-per-task=64" in script
+        assert "#SBATCH --mem-per-cpu=4000" in script
+        assert "#SBATCH -J L800.gp14" in script
+        assert "#SBATCH -p cosma8-shm" in script
+        assert "#SBATCH -A durham" in script
+        assert "#SBATCH -t 72:00:00" in script
+        assert "--array" not in script
+        assert f"tcsh -ef {tcsh_path}" in script
+        assert "for task_id in $(seq 1 64)" in script
+        assert "wait" in script
+        assert ".%j.log" in script
+        assert ".%A.%a.log" not in script
+
+
+def test_create_packed_job_script_custom_mem():
+    """mem_per_cpu kwarg should propagate into the wrapper."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        gdir = _make_galform_dir(tmpdir)
+        submitter = GalformSubmitter(
+            galform_dir=gdir,
+            nbody_sim="L800",
+            model="gp14",
+            iz=100,
+            nvol="1-16",
+        )
+        script = submitter.create_packed_job_script(
+            iz=100, tcsh_path="/tmp/g.csh", mem_per_cpu=8000
+        )
+        assert "#SBATCH --cpus-per-task=16" in script
+        assert "#SBATCH --mem-per-cpu=8000" in script
+
+
+def test_submit_packed_job_dry_run(capsys):
+    """Dry run should print both scripts and not call sbatch."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        gdir = _make_galform_dir(tmpdir)
+        submitter = GalformSubmitter(
+            galform_dir=gdir,
+            nbody_sim="L800",
+            model="gp14",
+            iz=100,
+            nvol="1-8",
+        )
+        tcsh_path = f"{tmpdir}/g.csh"
+        result = submitter.submit_packed_job(iz=100, tcsh_path=tcsh_path, dry_run=True)
+
+        assert result is None
+        captured = capsys.readouterr()
+        assert "DRY RUN (packed)" in captured.out
+        assert "#!/bin/tcsh -ef" in captured.out
+        assert "#!/bin/bash" in captured.out
+
+
+def test_submit_packed_job_writes_tcsh_and_submits():
+    """submit_packed_job should write the tcsh script and submit the bash wrapper."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        gdir = _make_galform_dir(tmpdir)
+        submitter = GalformSubmitter(
+            galform_dir=gdir,
+            nbody_sim="L800",
+            model="gp14",
+            iz=100,
+            nvol="1-4",
+            submit_retry_delay_s=0.0,
+        )
+        tcsh_path = Path(tmpdir) / "scripts" / "galform.csh"
+
+        calls = {}
+
+        def _fake_run(cmd, input, capture_output, check):
+            calls["cmd"] = cmd
+            calls["input"] = input.decode()
+
+            class _Result:
+                stdout = b"Submitted batch job 99999\n"
+
+            return _Result()
+
+        with patch("subprocess.run", side_effect=_fake_run):
+            job_id = submitter.submit_packed_job(
+                iz=100, tcsh_path=str(tcsh_path), dry_run=False
+            )
+
+        assert job_id == "99999"
+        assert "--array" not in " ".join(calls["cmd"])
+        assert "#!/bin/bash" in calls["input"]
+        assert "#SBATCH --cpus-per-task=4" in calls["input"]
+        assert str(tcsh_path) in calls["input"]
+        assert tcsh_path.exists()
+        assert "#!/bin/tcsh -ef" in tcsh_path.read_text()
+
+
+def test_submit_packed_job_retries_transient_error():
+    """Transient sbatch errors during packed submission should be retried."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        gdir = _make_galform_dir(tmpdir)
+        submitter = GalformSubmitter(
+            galform_dir=gdir,
+            nbody_sim="L800",
+            model="gp14",
+            iz=100,
+            nvol="1-4",
+            submit_retries=3,
+            submit_retry_delay_s=0.0,
+        )
+        tcsh_path = Path(tmpdir) / "g.csh"
+
+        transient_err = subprocess.CalledProcessError(
+            returncode=1,
+            cmd=["sbatch"],
+            output=b"",
+            stderr=b"sbatch: error: Slurm temporarily unable to accept job\n",
+        )
+        success = subprocess.CompletedProcess(
+            args=["sbatch"],
+            returncode=0,
+            stdout=b"Submitted batch job 77777\n",
+            stderr=b"",
+        )
+
+        with patch("galform_execution.submit_galform_job.time.sleep"):
+            with patch(
+                "galform_execution.submit_galform_job.subprocess.run",
+                side_effect=[transient_err, success],
+            ) as mocked_run:
+                job_id = submitter.submit_packed_job(
+                    iz=100, tcsh_path=str(tcsh_path), dry_run=False
+                )
+
+        assert job_id == "77777"
+        assert mocked_run.call_count == 2
+
+
 def test_multi_output_respects_explicit_mgalmin_descendant_override():
     """User-provided mgalmin_output_descendants should not be overwritten."""
     with tempfile.TemporaryDirectory() as tmpdir:
