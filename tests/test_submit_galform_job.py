@@ -476,6 +476,7 @@ def test_submit_job_retries_transient_error_then_succeeds():
             nvol="101-150",
             submit_retries=3,
             submit_retry_delay_s=0.0,
+            log_path=str(Path(tmpdir) / "logs"),
         )
 
         transient_err = subprocess.CalledProcessError(
@@ -518,6 +519,7 @@ def test_submit_job_fails_immediately_for_non_transient_error():
             nvol="101-150",
             submit_retries=3,
             submit_retry_delay_s=0.0,
+            log_path=str(Path(tmpdir) / "logs"),
         )
 
         fatal_err = subprocess.CalledProcessError(
@@ -556,6 +558,7 @@ def test_submit_job_fails_after_retries_exhausted_for_transient_error():
             nvol="101-150",
             submit_retries=3,
             submit_retry_delay_s=0.0,
+            log_path=str(Path(tmpdir) / "logs"),
         )
 
         transient_err = subprocess.CalledProcessError(
