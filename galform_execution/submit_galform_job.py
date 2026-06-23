@@ -61,6 +61,13 @@ class ModelConfig:
 
 
 @dataclass
+class PartitionConfig:
+    """COSMA SLURM partition hardware limits."""
+
+    cpus_per_node: int
+
+
+@dataclass
 class RunFlags:
     """Flags controlling which parts of the GALFORM pipeline to run."""
 
@@ -89,6 +96,7 @@ _LEGACY_RUN_FLAGS_CONFIG_PATH = Path(__file__).parent / "run_flags.json"
 _REDSHIFT_LISTS_DIR = _CONFIG_DIR / "redshift_lists"
 
 _SIMULATION_CONFIG_DIR = _CONFIG_DIR / "simulations"
+_PARTITION_CONFIG_PATH = _CONFIG_DIR / "partition_configs.json"
 
 _TRANSIENT_SUBMIT_ERROR_MARKERS = (
     "slurm temporarily unable to accept job",
@@ -171,11 +179,21 @@ def load_model_configs(
     return models
 
 
+def load_partition_configs(
+    config_path: Optional[str] = None,
+) -> Dict[str, PartitionConfig]:
+    """Load COSMA partition hardware limits from JSON."""
+    path = Path(config_path) if config_path else _PARTITION_CONFIG_PATH
+    raw = _load_json(path)
+    return {name: PartitionConfig(**cfg) for name, cfg in raw.items()}
+
+
 DUST_CONFIGS = load_dust_configs()
 DUST_BAUGH05 = DUST_CONFIGS["baugh05"]
 DUST_LACEY16 = DUST_CONFIGS["lacey16"]
 SIMULATION_CONFIGS = load_simulation_configs()
 MODEL_CONFIGS = load_model_configs(DUST_CONFIGS)
+PARTITION_CONFIGS = load_partition_configs()
 
 
 def load_run_flags_config(config_path: Optional[str] = None) -> RunFlags:
@@ -249,7 +267,14 @@ def _parse_nvol_range(nvol_range: str) -> Tuple[int, int]:
 
 
 class GalformSubmitter:
-    """Orchestrates GALFORM N-body runs submitted to SLURM as tcsh array jobs."""
+    """Orchestrates GALFORM N-body runs submitted to SLURM as single-slot packed jobs.
+
+    Each snapshot is submitted as one SLURM job requesting
+    ``--cpus-per-task=min(nvol_count, partition_cpus_per_node)`` CPUs.  A bash
+    wrapper forks one worker per CPU; each worker iterates over a strided subset
+    of subvolume IDs so that all ``nvol_count`` subvolumes are processed within
+    that single slot.  No ``--array`` flag is used.
+    """
 
     def __init__(
         self,
@@ -369,8 +394,6 @@ class GalformSubmitter:
 
         self.nvol_start, self.nvol_end = _parse_nvol_range(self.nvol_range)
         self.nvol_count = self.nvol_end - self.nvol_start + 1
-        # Use compact task IDs to avoid SLURM sites that reject large array indices.
-        self.slurm_array_range = f"1-{self.nvol_count}"
 
         # Validate
         if not self.galform_dir.is_dir():
@@ -738,8 +761,12 @@ rm -f $galform_inputs_file
 exit
 """
 
-    def create_slurm_script(self, iz: int) -> str:
-        """Generate the complete SLURM/tcsh batch script for snapshot iz."""
+    def _create_tcsh_script(self, iz: int) -> str:
+        """Generate the inner tcsh GALFORM script for snapshot iz.
+
+        This script is written to disk and invoked by the bash wrapper; it is
+        never submitted directly to sbatch.
+        """
         if self.sim_config is None:
             raise ValueError(
                 f"No simulation config for '{self.nbody_sim}'. "
@@ -860,22 +887,27 @@ set SAMPLE_GALS_EXE    = ${{build_dir}}/sample_gals
 """
         return script
 
-    def create_packed_job_script(
-        self, iz: int, tcsh_path: str, mem_per_cpu: int = 4000
+    def create_job_script(
+        self, iz: int, tcsh_path: Optional[str] = None, mem_per_cpu: int = 4000
     ) -> str:
         """Generate a bash wrapper that runs all subvolumes in a single SLURM slot.
 
-        Instead of a SLURM array (one task per subvolume), this script requests
-        --cpus-per-task=<nvol_count> and forks each subvolume as a background
-        process with SLURM_ARRAY_TASK_ID set via ``env``.  The tcsh script at
-        *tcsh_path* is referenced by path and must be written to disk before
-        the bash job starts (e.g. via ``create_slurm_script``).
+        Requests ``--cpus-per-task=min(nvol_count, partition_cpus_per_node)`` and
+        forks one worker per CPU.  Each worker iterates over a strided subset of
+        task IDs so that all ``nvol_count`` subvolumes are covered even when
+        ``nvol_count`` exceeds the partition's ``cpus_per_node`` (e.g. L800's 1024
+        ivols on a 128-CPU cosma8 node: 128 workers each run 8 ivols sequentially).
+        No ``--array`` flag is used.
 
         Args:
             iz: Snapshot index (informational; used by the referenced tcsh script).
-            tcsh_path: Absolute path to the tcsh GALFORM script on disk.
+            tcsh_path: Absolute path to the tcsh GALFORM script on disk.  When
+                ``None``, defaults to
+                ``<log_path>/<nbody_sim>/<model>_iz<iz>.csh``.
             mem_per_cpu: Memory per CPU in MB passed to ``--mem-per-cpu``.
         """
+        if tcsh_path is None:
+            tcsh_path = str(self.log_path / self.nbody_sim / f"{self.model}_iz{iz}.csh")
         jobname = f"{self.nbody_sim}.{self.model}"
         logname = self.log_path / self.nbody_sim / f"{self.model}.%j.log"
 
@@ -884,9 +916,16 @@ set SAMPLE_GALS_EXE    = ${{build_dir}}/sample_gals
         except PermissionError:
             pass
 
+        partition_cfg = PARTITION_CONFIGS.get(self.partition)
+        effective_cpus = (
+            min(self.nvol_count, partition_cfg.cpus_per_node)
+            if partition_cfg is not None
+            else self.nvol_count
+        )
+
         script = f"""#!/bin/bash
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task={self.nvol_count}
+#SBATCH --cpus-per-task={effective_cpus}
 #SBATCH --mem-per-cpu={mem_per_cpu}
 #SBATCH -J {jobname}
 #SBATCH -o {logname}
@@ -894,8 +933,16 @@ set SAMPLE_GALS_EXE    = ${{build_dir}}/sample_gals
 #SBATCH -A {self.account}
 #SBATCH -t {self.walltime}
 
-for task_id in $(seq 1 {self.nvol_count}); do
-    env SLURM_ARRAY_TASK_ID=$task_id tcsh -ef {tcsh_path} &
+_run_worker() {{
+    local task_id=$1
+    while [ $task_id -le {self.nvol_count} ]; do
+        env SLURM_ARRAY_TASK_ID=$task_id tcsh -ef {tcsh_path}
+        task_id=$(( task_id + {effective_cpus} ))
+    done
+}}
+
+for cpu_id in $(seq 1 {effective_cpus}); do
+    _run_worker $cpu_id &
 done
 wait
 """
@@ -941,44 +988,31 @@ wait
                 )
                 time.sleep(delay_s)
 
-    def submit_job(self, iz: int, dry_run: bool = False) -> Optional[str]:
-        """Submit a SLURM array job for snapshot iz; returns job ID or None if dry_run."""
-        script_content = self.create_slurm_script(iz)
-
-        if dry_run:
-            print(f"DRY RUN: iz={iz}, nvol_range={self.nvol_range}")
-            print(script_content)
-            return None
-
-        return self._sbatch_with_retry(
-            script_content, iz, extra_args=[f"--array={self.slurm_array_range}"]
-        )
-
-    def submit_packed_job(
+    def submit_job(
         self,
         iz: int,
-        tcsh_path: str,
         mem_per_cpu: int = 4000,
         dry_run: bool = False,
     ) -> Optional[str]:
         """Submit a packed (single-slot) SLURM job for snapshot iz.
 
-        Writes the tcsh script to *tcsh_path* on disk, then submits the bash
-        wrapper generated by ``create_packed_job_script``.  Returns the SLURM
-        job ID, or None if *dry_run* is True.
+        Writes the inner tcsh script to
+        ``<log_path>/<nbody_sim>/<model>_iz<iz>.csh`` on disk, then submits
+        the bash wrapper generated by ``create_job_script`` via ``sbatch``.
+        Returns the SLURM job ID, or ``None`` if *dry_run* is ``True``.
 
         Args:
             iz: Snapshot index.
-            tcsh_path: Path where the inner tcsh script will be written.
             mem_per_cpu: Memory per CPU in MB (forwarded to the bash wrapper).
             dry_run: If True, print scripts and return None without submitting.
         """
-        tcsh_script = self.create_slurm_script(iz)
-        bash_script = self.create_packed_job_script(iz, tcsh_path, mem_per_cpu)
+        tcsh_path = self.log_path / self.nbody_sim / f"{self.model}_iz{iz}.csh"
+        tcsh_script = self._create_tcsh_script(iz)
+        bash_script = self.create_job_script(iz, str(tcsh_path), mem_per_cpu)
 
         if dry_run:
             print(
-                f"DRY RUN (packed): iz={iz}, nvol_range={self.nvol_range}, "
+                f"DRY RUN: iz={iz}, nvol_range={self.nvol_range}, "
                 f"tcsh_path={tcsh_path}"
             )
             print("=== tcsh script ===")
@@ -987,17 +1021,18 @@ wait
             print(bash_script)
             return None
 
-        tcsh_file = Path(tcsh_path)
-        tcsh_file.parent.mkdir(parents=True, exist_ok=True)
-        tcsh_file.write_text(tcsh_script)
+        tcsh_path.parent.mkdir(parents=True, exist_ok=True)
+        tcsh_path.write_text(tcsh_script)
 
         return self._sbatch_with_retry(bash_script, iz)
 
-    def submit_all_jobs(self, dry_run: bool = False) -> List[str]:
+    def submit_all_jobs(
+        self, mem_per_cpu: int = 4000, dry_run: bool = False
+    ) -> List[str]:
         """Submit SLURM jobs for all snapshots in iz_list; returns list of job IDs."""
         job_ids = []
         for iz in self.iz_list:
-            job_id = self.submit_job(iz, dry_run=dry_run)
+            job_id = self.submit_job(iz, mem_per_cpu=mem_per_cpu, dry_run=dry_run)
             if job_id:
                 job_ids.append(job_id)
         return job_ids
@@ -1043,7 +1078,7 @@ Examples:
     parser.add_argument("--iz", type=int, help="Single snapshot number to submit")
     parser.add_argument(
         "--nvol",
-        help='Subvolume range for SLURM array submission (e.g. "1-10" or "12")',
+        help='Subvolume range to process (e.g. "1-10" or "12")',
     )
     parser.add_argument(
         "--output-base-dir",

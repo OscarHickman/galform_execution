@@ -106,8 +106,8 @@ def test_galform_submitter_accepts_nvol_range():
         assert submitter.nvol_range == "1-10"
 
 
-def test_create_slurm_script():
-    """Test SLURM script generation."""
+def test_create_tcsh_script():
+    """Test tcsh inner script generation."""
     with tempfile.TemporaryDirectory() as tmpdir:
         gdir = _make_galform_dir(tmpdir)
 
@@ -118,7 +118,7 @@ def test_create_slurm_script():
             output_folder_name="Galform_Out_Test",
         )
 
-        script_content = submitter.create_slurm_script(iz=100)
+        script_content = submitter._create_tcsh_script(iz=100)
 
         # Check SLURM directives
         assert "#!/bin/tcsh -ef" in script_content
@@ -177,7 +177,7 @@ def test_run_flags():
             run_flags=flags,
         )
 
-        script_content = submitter.create_slurm_script(iz=271)
+        script_content = submitter._create_tcsh_script(iz=271)
 
         assert "set galform     = true" in script_content
         assert "set neta        = false" in script_content
@@ -341,8 +341,8 @@ def test_parse_nvol_range_supports_single_and_range():
     assert _parse_nvol_range("1001-1024") == (1001, 1024)
 
 
-def test_submit_job_remaps_large_nvol_array_indices():
-    """Submitting high nvol IDs should use a compact SLURM array range."""
+def test_high_nvol_offset_in_tcsh_script():
+    """High nvol start offset should appear correctly in the inner tcsh script."""
     with tempfile.TemporaryDirectory() as tmpdir:
         gdir = _make_galform_dir(tmpdir)
 
@@ -354,23 +354,8 @@ def test_submit_job_remaps_large_nvol_array_indices():
             nvol="1001-1024",
         )
 
-        called = {}
-
-        def _fake_run(cmd, input, capture_output, check):
-            called["cmd"] = cmd
-            called["input"] = input.decode()
-
-            class _Result:
-                stdout = b"Submitted batch job 12345\n"
-
-            return _Result()
-
-        with patch("subprocess.run", side_effect=_fake_run):
-            job_id = submitter.submit_job(iz=207, dry_run=False)
-
-        assert job_id == "12345"
-        assert "--array=1-24" in called["cmd"]
-        assert "@ ivol        = $slurm_task_id + 1001 - 2" in called["input"]
+        script = submitter._create_tcsh_script(iz=207)
+        assert "@ ivol        = $slurm_task_id + 1001 - 2" in script
 
 
 def test_script_dry_run():
@@ -456,7 +441,7 @@ def test_log_path_creation():
             log_path=str(log_path),
         )
 
-        submitter.create_slurm_script(iz=100)
+        submitter._create_tcsh_script(iz=100)
 
         assert log_path.exists()
         assert (log_path / "L800").exists()
@@ -475,7 +460,7 @@ def test_output_base_dir():
             output_folder_name="CustomFolder",
         )
 
-        script = submitter.create_slurm_script(iz=271)
+        script = submitter._create_tcsh_script(iz=271)
         assert str(out_dir / "CustomFolder" / "L800") in script
 
 
@@ -495,7 +480,7 @@ def test_submit_job_retries_transient_error_then_succeeds():
 
         transient_err = subprocess.CalledProcessError(
             returncode=1,
-            cmd=["sbatch", "--array=101-150"],
+            cmd=["sbatch"],
             output=b"",
             stderr=(
                 b"sbatch: error: Slurm temporarily unable to accept job, sleeping and retrying\n"
@@ -503,7 +488,7 @@ def test_submit_job_retries_transient_error_then_succeeds():
             ),
         )
         success = subprocess.CompletedProcess(
-            args=["sbatch", "--array=101-150"],
+            args=["sbatch"],
             returncode=0,
             stdout=b"Submitted batch job 12345\n",
             stderr=b"",
@@ -537,7 +522,7 @@ def test_submit_job_fails_immediately_for_non_transient_error():
 
         fatal_err = subprocess.CalledProcessError(
             returncode=1,
-            cmd=["sbatch", "--array=101-150"],
+            cmd=["sbatch"],
             output=b"",
             stderr=b"sbatch: error: Invalid account or account/partition combination specified\n",
         )
@@ -575,7 +560,7 @@ def test_submit_job_fails_after_retries_exhausted_for_transient_error():
 
         transient_err = subprocess.CalledProcessError(
             returncode=1,
-            cmd=["sbatch", "--array=101-150"],
+            cmd=["sbatch"],
             output=b"",
             stderr=(
                 b"sbatch: error: Slurm temporarily unable to accept job, sleeping and retrying\n"
@@ -609,7 +594,7 @@ def test_custom_modules():
             modules=["gcc/11.0", "openmpi/4.1"],
         )
 
-        script = submitter.create_slurm_script(iz=271)
+        script = submitter._create_tcsh_script(iz=271)
         assert "modulecmd.tcl csh purge" in script
         assert "modulecmd.tcl csh load gcc/11.0" in script
         assert "modulecmd.tcl csh load openmpi/4.1" in script
@@ -631,7 +616,7 @@ def test_multi_output_redshifts_set_nout_and_zout():
             },
         )
 
-        script = submitter.create_slurm_script(iz=155)
+        script = submitter._create_tcsh_script(iz=155)
         assert "./replace_variable.csh $galform_inputs_file nout 3" in script
         assert "./replace_vector.csh $galform_inputs_file zout 0 0.401 1" in script
         assert (
@@ -640,8 +625,8 @@ def test_multi_output_redshifts_set_nout_and_zout():
         )
 
 
-def test_create_packed_job_script():
-    """Packed bash wrapper should use cpus-per-task instead of --array."""
+def test_create_job_script():
+    """Job bash wrapper should use cpus-per-task instead of --array."""
     with tempfile.TemporaryDirectory() as tmpdir:
         gdir = _make_galform_dir(tmpdir)
         log_path = Path(tmpdir) / "logs"
@@ -659,7 +644,7 @@ def test_create_packed_job_script():
         )
 
         tcsh_path = f"{tmpdir}/logs/L800/gp14_iz100.csh"
-        script = submitter.create_packed_job_script(iz=100, tcsh_path=tcsh_path)
+        script = submitter.create_job_script(iz=100, tcsh_path=tcsh_path)
 
         assert "#!/bin/bash" in script
         assert "#SBATCH --ntasks=1" in script
@@ -671,13 +656,16 @@ def test_create_packed_job_script():
         assert "#SBATCH -t 72:00:00" in script
         assert "--array" not in script
         assert f"tcsh -ef {tcsh_path}" in script
-        assert "for task_id in $(seq 1 64)" in script
+        # cosma8-shm has 128 CPUs; 64 ivols fit without throttling
+        assert "for cpu_id in $(seq 1 64)" in script
+        assert "[ $task_id -le 64 ]" in script
+        assert "task_id + 64" in script
         assert "wait" in script
         assert ".%j.log" in script
         assert ".%A.%a.log" not in script
 
 
-def test_create_packed_job_script_custom_mem():
+def test_create_job_script_custom_mem():
     """mem_per_cpu kwarg should propagate into the wrapper."""
     with tempfile.TemporaryDirectory() as tmpdir:
         gdir = _make_galform_dir(tmpdir)
@@ -688,14 +676,39 @@ def test_create_packed_job_script_custom_mem():
             iz=100,
             nvol="1-16",
         )
-        script = submitter.create_packed_job_script(
+        script = submitter.create_job_script(
             iz=100, tcsh_path="/tmp/g.csh", mem_per_cpu=8000
         )
         assert "#SBATCH --cpus-per-task=16" in script
         assert "#SBATCH --mem-per-cpu=8000" in script
 
 
-def test_submit_packed_job_dry_run(capsys):
+def test_create_job_script_throttled():
+    """Job script caps cpus-per-task at partition limit; workers stride over excess ivols."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        gdir = _make_galform_dir(tmpdir)
+        submitter = GalformSubmitter(
+            galform_dir=gdir,
+            nbody_sim="L800",
+            model="gp14",
+            iz=100,
+            nvol="1-1024",
+            partition="cosma8",  # 128 CPUs per node
+            account="durham",
+            walltime="72:00:00",
+        )
+        script = submitter.create_job_script(iz=100, tcsh_path="/tmp/g.csh")
+
+        # Should request only 128 CPUs, not 1024
+        assert "#SBATCH --cpus-per-task=128" in script
+        # Each worker strides through 1024 ivols 128 at a time
+        assert "for cpu_id in $(seq 1 128)" in script
+        assert "[ $task_id -le 1024 ]" in script
+        assert "task_id + 128" in script
+        assert "--array" not in script
+
+
+def test_submit_job_dry_run(capsys):
     """Dry run should print both scripts and not call sbatch."""
     with tempfile.TemporaryDirectory() as tmpdir:
         gdir = _make_galform_dir(tmpdir)
@@ -706,29 +719,30 @@ def test_submit_packed_job_dry_run(capsys):
             iz=100,
             nvol="1-8",
         )
-        tcsh_path = f"{tmpdir}/g.csh"
-        result = submitter.submit_packed_job(iz=100, tcsh_path=tcsh_path, dry_run=True)
+        result = submitter.submit_job(iz=100, dry_run=True)
 
         assert result is None
         captured = capsys.readouterr()
-        assert "DRY RUN (packed)" in captured.out
+        assert "DRY RUN" in captured.out
         assert "#!/bin/tcsh -ef" in captured.out
         assert "#!/bin/bash" in captured.out
 
 
-def test_submit_packed_job_writes_tcsh_and_submits():
-    """submit_packed_job should write the tcsh script and submit the bash wrapper."""
+def test_submit_job_writes_tcsh_and_submits():
+    """submit_job should write the tcsh script and submit the bash wrapper."""
     with tempfile.TemporaryDirectory() as tmpdir:
         gdir = _make_galform_dir(tmpdir)
+        log_path = Path(tmpdir) / "logs"
         submitter = GalformSubmitter(
             galform_dir=gdir,
             nbody_sim="L800",
             model="gp14",
             iz=100,
             nvol="1-4",
+            log_path=str(log_path),
             submit_retry_delay_s=0.0,
         )
-        tcsh_path = Path(tmpdir) / "scripts" / "galform.csh"
+        expected_tcsh = log_path / "L800" / "gp14_iz100.csh"
 
         calls = {}
 
@@ -742,33 +756,32 @@ def test_submit_packed_job_writes_tcsh_and_submits():
             return _Result()
 
         with patch("subprocess.run", side_effect=_fake_run):
-            job_id = submitter.submit_packed_job(
-                iz=100, tcsh_path=str(tcsh_path), dry_run=False
-            )
+            job_id = submitter.submit_job(iz=100, dry_run=False)
 
         assert job_id == "99999"
         assert "--array" not in " ".join(calls["cmd"])
         assert "#!/bin/bash" in calls["input"]
         assert "#SBATCH --cpus-per-task=4" in calls["input"]
-        assert str(tcsh_path) in calls["input"]
-        assert tcsh_path.exists()
-        assert "#!/bin/tcsh -ef" in tcsh_path.read_text()
+        assert str(expected_tcsh) in calls["input"]
+        assert expected_tcsh.exists()
+        assert "#!/bin/tcsh -ef" in expected_tcsh.read_text()
 
 
-def test_submit_packed_job_retries_transient_error():
-    """Transient sbatch errors during packed submission should be retried."""
+def test_submit_job_retries_transient_error():
+    """Transient sbatch errors during submission should be retried."""
     with tempfile.TemporaryDirectory() as tmpdir:
         gdir = _make_galform_dir(tmpdir)
+        log_path = Path(tmpdir) / "logs"
         submitter = GalformSubmitter(
             galform_dir=gdir,
             nbody_sim="L800",
             model="gp14",
             iz=100,
             nvol="1-4",
+            log_path=str(log_path),
             submit_retries=3,
             submit_retry_delay_s=0.0,
         )
-        tcsh_path = Path(tmpdir) / "g.csh"
 
         transient_err = subprocess.CalledProcessError(
             returncode=1,
@@ -788,9 +801,7 @@ def test_submit_packed_job_retries_transient_error():
                 "galform_execution.submit_galform_job.subprocess.run",
                 side_effect=[transient_err, success],
             ) as mocked_run:
-                job_id = submitter.submit_packed_job(
-                    iz=100, tcsh_path=str(tcsh_path), dry_run=False
-                )
+                job_id = submitter.submit_job(iz=100, dry_run=False)
 
         assert job_id == "77777"
         assert mocked_run.call_count == 2
@@ -813,7 +824,7 @@ def test_multi_output_respects_explicit_mgalmin_descendant_override():
             },
         )
 
-        script = submitter.create_slurm_script(iz=155)
+        script = submitter._create_tcsh_script(iz=155)
         assert (
             "./replace_variable.csh $galform_inputs_file mgalmin_output_descendants .false."
             in script
