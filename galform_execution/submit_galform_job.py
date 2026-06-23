@@ -301,6 +301,8 @@ class GalformSubmitter:
         submit_retries: int = 4,
         submit_retry_delay_s: float = 15.0,
         submit_retry_backoff: float = 2.0,
+        mail_user: Optional[str] = None,
+        mail_type: str = "END,FAIL",
     ):
         self.galform_dir = Path(galform_dir)
         self.nbody_sim = nbody_sim
@@ -324,6 +326,8 @@ class GalformSubmitter:
         self.submit_retries = max(1, int(submit_retries))
         self.submit_retry_delay_s = max(0.0, float(submit_retry_delay_s))
         self.submit_retry_backoff = max(1.0, float(submit_retry_backoff))
+        self.mail_user = mail_user
+        self.mail_type = mail_type
         self._snapshot_redshift_cache: Optional[Dict[int, float]] = None
 
         if self.output_redshifts is not None and self.output_iz_list is not None:
@@ -923,6 +927,12 @@ set SAMPLE_GALS_EXE    = ${{build_dir}}/sample_gals
             else self.nvol_count
         )
 
+        mail_lines = (
+            f"#SBATCH --mail-user={self.mail_user}\n#SBATCH --mail-type={self.mail_type}"
+            if self.mail_user
+            else ""
+        )
+
         script = f"""#!/bin/bash
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task={effective_cpus}
@@ -932,6 +942,7 @@ set SAMPLE_GALS_EXE    = ${{build_dir}}/sample_gals
 #SBATCH -p {self.partition}
 #SBATCH -A {self.account}
 #SBATCH -t {self.walltime}
+{mail_lines}
 
 _run_worker() {{
     local task_id=$1
@@ -1104,6 +1115,16 @@ Examples:
         "--walltime", default="72:00:00", help="Job wall-time (default: 72:00:00)"
     )
     parser.add_argument(
+        "--mail-user",
+        default=None,
+        help="Email address for SLURM job notifications",
+    )
+    parser.add_argument(
+        "--mail-type",
+        default="END,FAIL",
+        help="SLURM mail event types (default: END,FAIL)",
+    )
+    parser.add_argument(
         "--iz-list", type=int, nargs="+", help="Override default snapshot list"
     )
     parser.add_argument(
@@ -1271,6 +1292,8 @@ Examples:
             partition=args.partition,
             account=args.account,
             walltime=args.walltime,
+            mail_user=args.mail_user,
+            mail_type=args.mail_type,
             iz_list=args.iz_list,
             nvol_range=args.nvol_range,
             run_flags=run_flags,

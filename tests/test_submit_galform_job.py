@@ -708,6 +708,52 @@ def test_create_job_script_throttled():
         assert "--array" not in script
 
 
+def test_create_job_script_mail_notifications():
+    """mail_user should add SBATCH mail directives; omitting it should not."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        gdir = _make_galform_dir(tmpdir)
+
+        # With email — default mail_type
+        submitter = GalformSubmitter(
+            galform_dir=gdir,
+            nbody_sim="L800",
+            model="gp14",
+            iz=100,
+            nvol="1-8",
+            mail_user="user@example.com",
+        )
+        script = submitter.create_job_script(iz=100, tcsh_path="/tmp/g.csh")
+        assert "#SBATCH --mail-user=user@example.com" in script
+        assert "#SBATCH --mail-type=END,FAIL" in script
+
+        # Custom mail_type
+        submitter_all = GalformSubmitter(
+            galform_dir=gdir,
+            nbody_sim="L800",
+            model="gp14",
+            iz=100,
+            nvol="1-8",
+            mail_user="user@example.com",
+            mail_type="ALL",
+        )
+        script_all = submitter_all.create_job_script(iz=100, tcsh_path="/tmp/g.csh")
+        assert "#SBATCH --mail-type=ALL" in script_all
+
+        # Without email — directives must be absent
+        submitter_no_mail = GalformSubmitter(
+            galform_dir=gdir,
+            nbody_sim="L800",
+            model="gp14",
+            iz=100,
+            nvol="1-8",
+        )
+        script_no_mail = submitter_no_mail.create_job_script(
+            iz=100, tcsh_path="/tmp/g.csh"
+        )
+        assert "--mail-user" not in script_no_mail
+        assert "--mail-type" not in script_no_mail
+
+
 def test_submit_job_dry_run(capsys):
     """Dry run should print both scripts and not call sbatch."""
     with tempfile.TemporaryDirectory() as tmpdir:
