@@ -91,7 +91,7 @@
     "volume": 1953125.0
   },
   "MillGas62.5": {
-    "_note": "Tree files not present on disk — lbox/mpart unverified.",
+    "_note": "Tree files not present on disk — lbox/mpart unverified. Previous volume=1953125.0 was a copy-paste from the 500 Mpc/h MillGas box and wrong for a 62.5 box; set to null.",
     "aquarius_particle_file": "/cosma5/data/jch/Galform/Merger_Trees/MillGas/dm/62.5/new/particle_lists/particle_list_061",
     "aquarius_tree_file": "/cosma5/data/jch/Galform/Merger_Trees/MillGas/dm/62.5/new/treedir_061/tree_061",
     "h0": 0.704,
@@ -109,7 +109,7 @@
     "pk_file": "Power_Spec/pk_MillGas_norm.dat",
     "sigma8": 0.81,
     "snapshot_file": "/cosma5/data/jch/Galform/Merger_Trees/MillGas/dm/62.5/new/redshift_list",
-    "volume": 1953125.0
+    "volume": null
   },
   "MilliMil": {
     "aquarius_particle_file": "/cosma5/data/jch/MilliMillennium/trees/particle_lists/particle_list_063",

@@ -1,5 +1,6 @@
 {
   "nifty62.5": {
+    "_note": "Tree dir /cosma5/data/jch/Galform/Merger_Trees/nifty/ no longer exists on disk. Previous volume=1953125.0 was a copy-paste from the 500 Mpc/h MillGas box and wrong for a 62.5 box; set to null until trees are located.",
     "aquarius_particle_file": "",
     "aquarius_tree_file": "/cosma5/data/jch/Galform/Merger_Trees/nifty/62.5/treedir_061/tree_061",
     "h0": 0.704,
@@ -17,6 +18,6 @@
     "pk_file": "Power_Spec/pk_MillGas_norm.dat",
     "sigma8": 0.81,
     "snapshot_file": "/cosma5/data/jch/Galform/Merger_Trees/nifty/62.5/redshift_list",
-    "volume": 1953125.0
+    "volume": null
   }
 }

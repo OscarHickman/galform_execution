@@ -8,8 +8,8 @@
       200
     ],
     "lambda0": 0.693,
-    "lbox": null,
-    "mpart": null,
+    "lbox": 67.77,
+    "mpart": 7795580.0,
     "nbody_trees_dir": "/cosma7/data/dp004/jch/Eagle/Merger_Trees/DMONLY/L0100N1504",
     "nvol_range": "1-128",
     "omega0": 0.307,
@@ -28,8 +28,8 @@
       101
     ],
     "lambda0": 0.693,
-    "lbox": null,
-    "mpart": null,
+    "lbox": 67.77,
+    "mpart": 7795580.0,
     "nbody_trees_dir": "/cosma7/data/dp004/jch/Eagle/Merger_Trees/DMONLY/L0100N1504/trees_snapnums100",
     "nvol_range": "1-128",
     "omega0": 0.307,
@@ -48,8 +48,8 @@
       67
     ],
     "lambda0": 0.693,
-    "lbox": null,
-    "mpart": null,
+    "lbox": 67.77,
+    "mpart": 7795580.0,
     "nbody_trees_dir": "/cosma7/data/dp004/jch/Eagle/Merger_Trees/DMONLY/L0100N1504/trees_snapnums62",
     "nvol_range": "1-128",
     "omega0": 0.307,
