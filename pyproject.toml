@@ -32,3 +32,11 @@ galform_execution = ["config/**/*.json", "config/**/*.txt"]
 [tool.isort]
 profile = "black"
 
+[tool.ruff.lint]
+# Pin the rule set explicitly. Without this, ruff's "no config" default
+# selection changes between ruff releases (e.g. 0.15 -> 0.16 started
+# enabling rules like FA100/BLE001), which broke CI even though nothing
+# in this codebase changed. E4/E7/E9/F match ruff's long-standing
+# original defaults (pyflakes + a handful of pycodestyle error checks).
+select = ["E4", "E7", "E9", "F"]
+
