@@ -880,7 +880,6 @@ def test_multi_output_respects_explicit_mgalmin_descendant_override():
         )
 
 
-
 def test_params_file_path_is_job_unique():
     """The generated parameter file must not be shared between concurrent jobs.
 
@@ -902,7 +901,8 @@ def test_params_file_path_is_job_unique():
         script_content = submitter._create_tcsh_script(iz=100)
 
         line = next(
-            l for l in script_content.splitlines()
+            l
+            for l in script_content.splitlines()
             if l.strip().startswith("set galform_inputs_file")
         )
         assert "${SLURM_JOB_ID}" in line, (
