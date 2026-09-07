@@ -878,3 +878,33 @@ def test_multi_output_respects_explicit_mgalmin_descendant_override():
             "./replace_variable.csh $galform_inputs_file mgalmin_output_descendants .false."
             in script
         )
+
+
+
+def test_params_file_path_is_job_unique():
+    """The generated parameter file must not be shared between concurrent jobs.
+
+    Two jobs sharing (Nbody_sim, model, iz, ivol) each run
+    ``cp $base_inputs_file $galform_inputs_file`` before substituting, so a
+    shared path lets one job wipe the other's substitutions and lets GALFORM
+    read a parameter set belonging to a different job. This silently mixed
+    x_imf branches across the 2026 redshift-ladder campaigns.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        gdir = _make_galform_dir(tmpdir)
+
+        submitter = GalformSubmitter(
+            galform_dir=gdir,
+            nbody_sim="L800",
+            model="gp14",
+            output_folder_name="Galform_Out_Test",
+        )
+        script_content = submitter._create_tcsh_script(iz=100)
+
+        line = next(
+            l for l in script_content.splitlines()
+            if l.strip().startswith("set galform_inputs_file")
+        )
+        assert "${SLURM_JOB_ID}" in line, (
+            "parameter file path must be job-unique; got: " + line
+        )

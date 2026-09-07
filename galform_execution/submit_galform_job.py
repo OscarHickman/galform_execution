@@ -497,7 +497,18 @@ class GalformSubmitter:
         lines = [
             "# ---- model parameter file setup ----",
             f"set base_inputs_file = {mc.base_inputs_file}",
-            "set galform_inputs_file = ./params/${Nbody_sim}_${model}_iz${iz}_ivol${ivol}.input.temp",
+            # The job id MUST stay in this path. Without it, any two jobs
+            # sharing (Nbody_sim, model, iz, ivol) that run concurrently write
+            # the same file: each begins with `cp $base_inputs_file ...`, which
+            # wipes the other's substitutions, so GALFORM can read a parameter
+            # set belonging to a different job. This is not hypothetical -- it
+            # silently mixed x_imf branches across most of the 2026 redshift-
+            # ladder and counter-ladder campaigns, whose three branches per
+            # rung collide on exactly this key. Affected runs are identifiable
+            # after the fact only from each galaxies.hdf5's /Parameters group.
+            "set galform_inputs_file = "
+            "./params/${Nbody_sim}_${model}_iz${iz}_ivol${ivol}"
+            "_job${SLURM_JOB_ID}.input.temp",
             "\\mkdir -p ./params",
             "cp $base_inputs_file $galform_inputs_file",
         ]
