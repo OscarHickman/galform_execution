@@ -908,3 +908,85 @@ def test_params_file_path_is_job_unique():
         assert "${SLURM_JOB_ID}" in line, (
             "parameter file path must be job-unique; got: " + line
         )
+
+
+def test_explicit_ivols_list_in_tcsh_script():
+    """An explicit, non-contiguous ivol list is looked up by task id (tcsh arrays are 1-based)."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        gdir = _make_galform_dir(tmpdir)
+
+        submitter = GalformSubmitter(
+            galform_dir=gdir, nbody_sim="L800", model="gp14", iz=271, ivols=[5, 900, 17]
+        )
+
+        assert submitter.ivols == [5, 900, 17]
+        assert submitter.nvol_count == 3
+        script = submitter._create_tcsh_script(iz=271)
+        assert "set ivol_list = ( 5 900 17 )" in script
+        assert "@ ivol        = $ivol_list[$slurm_task_id]" in script
+        assert "$slurm_task_id + " not in script
+
+
+def test_explicit_ivols_sizes_job_wrapper():
+    """The bash wrapper covers exactly len(ivols) task ids."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        gdir = _make_galform_dir(tmpdir)
+        ivols = list(range(0, 1024, 16))  # 64 ivols
+
+        submitter = GalformSubmitter(
+            galform_dir=gdir,
+            nbody_sim="L800",
+            model="gp14",
+            iz=271,
+            ivols=ivols,
+            log_path=str(Path(tmpdir) / "logs"),
+            partition="cosma8-shm",
+        )
+
+        script = submitter.create_job_script(iz=271, tcsh_path="/x.csh")
+        assert "#SBATCH --cpus-per-task=64" in script
+        assert "[ $task_id -le 64 ]" in script
+
+
+def test_explicit_ivols_validation():
+    """ivols must be unique, in range, non-empty and exclusive with nvol/nvol_range."""
+    import pytest
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        gdir = _make_galform_dir(tmpdir)
+        kw = dict(galform_dir=gdir, nbody_sim="L800", model="gp14", iz=271)
+        for bad in ([], [3, 3], [-1], [1024]):
+            with pytest.raises(ValueError):
+                GalformSubmitter(**kw, ivols=bad)
+        with pytest.raises(ValueError):
+            GalformSubmitter(**kw, ivols=[1, 2], nvol="1-2")
+        with pytest.raises(ValueError):
+            GalformSubmitter(**kw, ivols=[1, 2], nvol_range="1-2")
+
+
+def test_contiguous_nvol_unchanged_without_ivols():
+    """Without ivols the legacy contiguous mapping is untouched."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        gdir = _make_galform_dir(tmpdir)
+        submitter = GalformSubmitter(
+            galform_dir=gdir, nbody_sim="L800", model="gp14", iz=271, nvol="1-64"
+        )
+        assert submitter.ivols is None
+        script = submitter._create_tcsh_script(iz=271)
+        assert "@ ivol        = $slurm_task_id + 1 - 2" in script
+        assert "ivol_list" not in script
+
+
+def test_explicit_ivols_with_unknown_sim():
+    """ivols stands in for nvol when the simulation is not in SIMULATION_CONFIGS."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        gdir = _make_galform_dir(tmpdir)
+        submitter = GalformSubmitter(
+            galform_dir=gdir,
+            nbody_sim="MyCustomSim",
+            model="gp14",
+            iz_list=[100],
+            ivols=[7, 2],
+        )
+        assert submitter.nvol_count == 2
+        assert submitter.nvol_range == "3-8"

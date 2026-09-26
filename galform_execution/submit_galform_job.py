@@ -9,7 +9,7 @@ import sys
 import time
 from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 
 @dataclass
@@ -244,6 +244,20 @@ def _resolve_log_path(explicit: Optional[str], output_folder_name: str) -> Path:
     return _default_cosma_user_root() / output_folder_name / "logs"
 
 
+def _validate_ivols(ivols: Sequence[int], sim_config) -> List[int]:
+    """Check an explicit ivol list: non-empty, unique, integer, in [0, k)."""
+    out = [int(i) for i in ivols]
+    if not out:
+        raise ValueError("ivols must not be empty")
+    if len(set(out)) != len(out):
+        raise ValueError("ivols must be unique")
+    k = _parse_nvol_range(sim_config.nvol_range)[1] if sim_config is not None else None
+    bad = [i for i in out if i < 0 or (k is not None and i >= k)]
+    if bad:
+        raise ValueError(f"ivols out of range [0, {k}): {bad[:5]}")
+    return out
+
+
 def _parse_nvol_range(nvol_range: str) -> Tuple[int, int]:
     """Parse a legacy nvol range string (e.g. ``'12'`` or ``'1001-1024'``)."""
     raw = str(nvol_range).strip()
@@ -303,7 +317,14 @@ class GalformSubmitter:
         submit_retry_backoff: float = 2.0,
         mail_user: Optional[str] = None,
         mail_type: str = "END,FAIL",
+        ivols: Optional[Sequence[int]] = None,
     ):
+        """Configure a submitter.
+
+        ``ivols``: optional explicit list of 0-based subvolume indices (the ``ivol<N>``
+        output directories), for non-contiguous selections such as a random m-of-k draw.
+        Mutually exclusive with ``nvol``/``nvol_range``; task id t runs ``ivols[t-1]``.
+        """
         self.galform_dir = Path(galform_dir)
         self.nbody_sim = nbody_sim
         self.model = model
@@ -378,7 +399,7 @@ class GalformSubmitter:
             if nvol is not None and nvol_range is not None:
                 raise ValueError("Specify only one of nvol and nvol_range")
             resolved_nvol_range = nvol if nvol is not None else nvol_range
-            if iz_list is None or resolved_nvol_range is None:
+            if iz_list is None or (resolved_nvol_range is None and ivols is None):
                 raise ValueError(
                     f"Unknown simulation '{nbody_sim}'. "
                     "Provide iz_list and nvol explicitly."
@@ -396,8 +417,19 @@ class GalformSubmitter:
         if self.iz is not None:
             self.iz_list = [self.iz]
 
-        self.nvol_start, self.nvol_end = _parse_nvol_range(self.nvol_range)
-        self.nvol_count = self.nvol_end - self.nvol_start + 1
+        if ivols is not None:
+            if nvol is not None or nvol_range is not None:
+                raise ValueError("Specify only one of ivols and nvol/nvol_range")
+            self.ivols = _validate_ivols(ivols, self.sim_config)
+            self.nvol_range = (
+                f"{min(self.ivols) + 1}-{max(self.ivols) + 1}"  # informational
+            )
+            self.nvol_start, self.nvol_end = 1, len(self.ivols)
+            self.nvol_count = len(self.ivols)
+        else:
+            self.ivols = None
+            self.nvol_start, self.nvol_end = _parse_nvol_range(self.nvol_range)
+            self.nvol_count = self.nvol_end - self.nvol_start + 1
 
         # Validate
         if not self.galform_dir.is_dir():
@@ -776,6 +808,15 @@ rm -f $galform_inputs_file
 exit
 """
 
+    def _ivol_assignment(self) -> str:
+        """tcsh lines mapping the 1-based task id to a 0-based ivol."""
+        if self.ivols is None:
+            return f"@ ivol        = $slurm_task_id + {self.nvol_start} - 2"
+        listed = " ".join(str(i) for i in self.ivols)
+        return (
+            f"set ivol_list = ( {listed} )\n@ ivol        = $ivol_list[$slurm_task_id]"
+        )
+
     def _create_tcsh_script(self, iz: int) -> str:
         """Generate the inner tcsh GALFORM script for snapshot iz.
 
@@ -845,7 +886,7 @@ set model     = {self.model}
 set Nbody_sim = {self.nbody_sim}
 set iz        = {iz}
 @ slurm_task_id = ${{SLURM_ARRAY_TASK_ID}}
-@ ivol        = $slurm_task_id + {self.nvol_start} - 2
+{self._ivol_assignment()}
 
 # Change to GALFORM source directory (scripts use relative paths)
 cd {self.galform_dir}
