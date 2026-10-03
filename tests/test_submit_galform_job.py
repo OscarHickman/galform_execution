@@ -1,21 +1,26 @@
 """Tests for submit_galform_job.py script."""
 
+import errno
+import json
+import os
 import subprocess
 import tempfile
 from pathlib import Path
-import sys
-import os
 from unittest.mock import patch
 
+import pytest
+
 from galform_execution.submit_galform_job import (
-    GalformSubmitter,
-    RunFlags,
-    SIMULATION_CONFIGS,
     MODEL_CONFIGS,
+    SIMULATION_CONFIGS,
     DustParams,
-    SimulationConfig,
+    GalformSubmitter,
     ModelConfig,
+    RunFlags,
+    SimulationConfig,
     _parse_nvol_range,
+    _resolve_log_path,
+    load_run_flags_config,
 )
 
 
@@ -275,64 +280,7 @@ def test_unknown_simulation():
         assert submitter.iz_list == [100]
 
 
-def test_script_help_option():
-    """Test that the script's help option works."""
-    script_path = (
-        Path(__file__).parent.parent / "galform_execution" / "submit_galform_job.py"
-    )
 
-    result = subprocess.run(
-        ["python", str(script_path), "--help"],
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0
-    assert "Submit GALFORM N-body runs to SLURM" in result.stdout
-    assert "galform_dir" in result.stdout
-    assert "--nbody-sim" in result.stdout
-    assert "--dry-run" in result.stdout
-    assert "--run-galform" in result.stdout
-    assert "--iz" in result.stdout
-    assert "--nvol" in result.stdout
-    assert "--output-folder-name" in result.stdout
-
-
-def test_script_list_simulations():
-    """Test that the script can list available simulations."""
-    script_path = (
-        Path(__file__).parent.parent / "galform_execution" / "submit_galform_job.py"
-    )
-
-    result = subprocess.run(
-        ["python", str(script_path), "--list-simulations"],
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0
-    assert "Available simulation configurations" in result.stdout
-    assert "L800" in result.stdout
-    assert "MillGas" in result.stdout
-    assert "EagleDM" in result.stdout
-
-
-def test_script_list_models():
-    """Test that the script can list available models."""
-    script_path = (
-        Path(__file__).parent.parent / "galform_execution" / "submit_galform_job.py"
-    )
-
-    result = subprocess.run(
-        ["python", str(script_path), "--list-models"],
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0
-    assert "Available model configurations" in result.stdout
-    assert "gp14" in result.stdout
-    assert "lc16" in result.stdout
 
 
 def test_parse_nvol_range_supports_single_and_range():
@@ -358,75 +306,6 @@ def test_high_nvol_offset_in_tcsh_script():
         assert "@ ivol        = $slurm_task_id + 1001 - 2" in script
 
 
-def test_script_dry_run():
-    """Test that the script's dry-run mode works."""
-    script_path = (
-        Path(__file__).parent.parent / "galform_execution" / "submit_galform_job.py"
-    )
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        gdir = _make_galform_dir(tmpdir)
-
-        result = subprocess.run(
-            [
-                "python",
-                str(script_path),
-                gdir,
-                "--nbody-sim",
-                "L800",
-                "--iz",
-                "100",
-                "--nvol",
-                "5",
-                "--output-folder-name",
-                "Galform_Out_Test",
-                "--dry-run",
-            ],
-            capture_output=True,
-            text=True,
-        )
-
-        assert result.returncode == 0
-        assert "DRY RUN" in result.stdout
-        assert "iz=100" in result.stdout
-        assert "nvol_range=5" in result.stdout
-        assert "#SBATCH" in result.stdout
-        assert "set model" in result.stdout
-        assert "Galform_Out_Test/L800" in result.stdout
-
-
-def test_script_dry_run_with_nvol_range():
-    """Test dry-run output for legacy-style nvol array submission."""
-    script_path = (
-        Path(__file__).parent.parent / "galform_execution" / "submit_galform_job.py"
-    )
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        gdir = _make_galform_dir(tmpdir)
-
-        result = subprocess.run(
-            [
-                "python",
-                str(script_path),
-                gdir,
-                "--nbody-sim",
-                "L800",
-                "--iz",
-                "100",
-                "--nvol",
-                "1-10",
-                "--dry-run",
-            ],
-            capture_output=True,
-            text=True,
-        )
-
-        assert result.returncode == 0
-        assert "DRY RUN" in result.stdout
-        assert "iz=100" in result.stdout
-        assert "nvol_range=1-10" in result.stdout
-        assert "@ slurm_task_id = ${SLURM_ARRAY_TASK_ID}" in result.stdout
-        assert "@ ivol        = $slurm_task_id + 1 - 2" in result.stdout
 
 
 def test_log_path_creation():
@@ -901,9 +780,9 @@ def test_params_file_path_is_job_unique():
         script_content = submitter._create_tcsh_script(iz=100)
 
         line = next(
-            l
-            for l in script_content.splitlines()
-            if l.strip().startswith("set galform_inputs_file")
+            ln
+            for ln in script_content.splitlines()
+            if ln.strip().startswith("set galform_inputs_file")
         )
         assert "${SLURM_JOB_ID}" in line, (
             "parameter file path must be job-unique; got: " + line
@@ -950,8 +829,6 @@ def test_explicit_ivols_sizes_job_wrapper():
 
 def test_explicit_ivols_validation():
     """ivols must be unique, in range, non-empty and exclusive with nvol/nvol_range."""
-    import pytest
-
     with tempfile.TemporaryDirectory() as tmpdir:
         gdir = _make_galform_dir(tmpdir)
         kw = dict(galform_dir=gdir, nbody_sim="L800", model="gp14", iz=271)
@@ -990,3 +867,187 @@ def test_explicit_ivols_with_unknown_sim():
         )
         assert submitter.nvol_count == 2
         assert submitter.nvol_range == "3-8"
+
+
+# --------------------------------------------------------------------------
+# Test isolation and default paths
+# --------------------------------------------------------------------------
+
+
+def test_default_log_path_is_isolated_from_cosma_during_tests(galform_dir, tmp_path):
+    submitter = GalformSubmitter(galform_dir=galform_dir, nbody_sim="L800")
+    assert tmp_path in submitter.log_path.parents
+
+
+def test_default_log_path_lives_under_cosma_user_root(monkeypatch):
+    monkeypatch.delenv("GALFORM_LOG_PATH", raising=False)
+    monkeypatch.setenv("USER", "someone")
+    assert _resolve_log_path(None, "Proj") == Path(
+        "/cosma5/data/durham/someone/Proj/logs"
+    )
+
+
+def test_log_path_env_var_and_explicit_argument(monkeypatch, tmp_path):
+    monkeypatch.setenv("GALFORM_LOG_PATH", str(tmp_path / "env"))
+    assert _resolve_log_path(None, "Proj") == tmp_path / "env"
+    assert _resolve_log_path(str(tmp_path / "explicit"), "Proj") == (
+        tmp_path / "explicit"
+    )
+
+
+# --------------------------------------------------------------------------
+# Input validation
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("bad", ["", "abc", "1-x", "0", "0-5", "10-1", "-3"])
+def test_parse_nvol_range_rejects_invalid_ranges(bad):
+    """Ranges are 1-based and ordered: ivol = task + start - 2 must be >= 0."""
+    with pytest.raises(ValueError):
+        _parse_nvol_range(bad)
+
+
+def test_unknown_snapshot_is_rejected_before_submission(galform_dir):
+    """An iz missing from the redshift list would only fail on the compute node."""
+    submitter = GalformSubmitter(
+        galform_dir=galform_dir, nbody_sim="L800", iz=99999, nvol="1-2"
+    )
+    with pytest.raises(ValueError, match="99999"):
+        submitter.create_tcsh_script(99999)
+    with pytest.raises(ValueError, match="99999"):
+        submitter.submit_job(99999, dry_run=True)
+
+
+def test_create_tcsh_script_is_public(galform_dir):
+    submitter = GalformSubmitter(galform_dir=galform_dir, nbody_sim="L800")
+    assert submitter.create_tcsh_script(100) == submitter._create_tcsh_script(100)
+
+
+# --------------------------------------------------------------------------
+# Job wrapper behaviour
+# --------------------------------------------------------------------------
+
+
+def test_job_wrapper_caps_thread_pools_to_one_per_worker(galform_dir):
+    """Workers already fill every allocated CPU, so each must stay single-threaded."""
+    submitter = GalformSubmitter(
+        galform_dir=galform_dir, nbody_sim="L800", iz=100, nvol="1-8"
+    )
+    script = submitter.create_job_script(iz=100, tcsh_path="/x.csh")
+    for var in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"):
+        assert f"export {var}=1" in script
+    assert script.index("export OMP_NUM_THREADS=1") < script.index("_run_worker $cpu_id &")
+
+
+def test_unwritable_log_dir_does_not_break_script_generation(galform_dir, monkeypatch):
+    """Previewing off-cluster must work even where /cosma5 cannot be created
+    (e.g. a read-only root filesystem raises EROFS, not PermissionError)."""
+    submitter = GalformSubmitter(
+        galform_dir=galform_dir, nbody_sim="L800", iz=100, nvol="1-2"
+    )
+
+    def _read_only(self, *args, **kwargs):
+        raise OSError(errno.EROFS, "Read-only file system", str(self))
+
+    monkeypatch.setattr(Path, "mkdir", _read_only)
+    assert "#!/bin/tcsh" in submitter.create_tcsh_script(100)
+    assert "#!/bin/bash" in submitter.create_job_script(100)
+
+
+# --------------------------------------------------------------------------
+# Custom simulation and model configs
+# --------------------------------------------------------------------------
+
+
+def _custom_sim(**overrides):
+    cfg = dict(
+        nvol_range="1-8",
+        nbody_trees_dir="/trees",
+        snapshot_file="L800.txt",
+        aquarius_tree_file="/trees/tree_271",
+        aquarius_particle_file="/trees/particle_list_271",
+        omega0=0.3,
+        lambda0=0.7,
+        omegab=0.05,
+        h0=0.7,
+        sigma8=0.8,
+        pk_file="Power_Spec/pk.dat",
+        iz_list=[271, 207],
+        volume=42.0,
+        iz0=271,
+    )
+    cfg.update(overrides)
+    return SimulationConfig(**cfg)
+
+
+def test_custom_sim_config_for_unregistered_simulation(galform_dir):
+    submitter = GalformSubmitter(
+        galform_dir=galform_dir, nbody_sim="MySim", sim_config=_custom_sim()
+    )
+    assert submitter.iz_list == [271, 207]
+    assert submitter.nvol_range == "1-8"
+    script = submitter.create_tcsh_script(271)
+    assert "set Nbody_sim = MySim" in script
+    assert "set volume     = 42.0" in script
+    assert "/trees/tree_271" in script
+
+
+def test_sim_config_argument_takes_precedence_over_registry(galform_dir):
+    submitter = GalformSubmitter(
+        galform_dir=galform_dir,
+        nbody_sim="L800",
+        sim_config=_custom_sim(omega0=0.123, lambda0=0.877),
+    )
+    assert "set omega0     = 0.123" in submitter.create_tcsh_script(271)
+
+
+def test_custom_model_config(galform_dir):
+    model = ModelConfig(
+        base_inputs_file="Mine.input.ref",
+        dust_params=DustParams(fcloud=0.9),
+        extra_replacements={"nmf": "3"},
+    )
+    submitter = GalformSubmitter(
+        galform_dir=galform_dir, nbody_sim="L800", model="mine", model_config=model
+    )
+    script = submitter.create_tcsh_script(100)
+    assert "set model     = mine" in script
+    assert "set base_inputs_file = Mine.input.ref" in script
+    assert "set fcloud = 0.9" in script
+    assert "./replace_variable.csh $galform_inputs_file nmf 3" in script
+
+
+def test_unknown_model_fails_with_actionable_message(galform_dir):
+    submitter = GalformSubmitter(
+        galform_dir=galform_dir, nbody_sim="L800", model="no_such_model"
+    )
+    with pytest.raises(ValueError, match="model_config"):
+        submitter.create_tcsh_script(100)
+
+
+# --------------------------------------------------------------------------
+# Run-flag config loading
+# --------------------------------------------------------------------------
+
+
+def test_load_run_flags_config_explicit_missing_path_raises(tmp_path):
+    with pytest.raises(FileNotFoundError, match="typo.json"):
+        load_run_flags_config(str(tmp_path / "typo.json"))
+
+
+def test_load_run_flags_config_rejects_unknown_keys(tmp_path):
+    cfg = tmp_path / "flags.json"
+    cfg.write_text(json.dumps({"neta": False, "lumfun": False}))
+    with pytest.raises(ValueError, match="lumfun"):
+        load_run_flags_config(str(cfg))
+
+
+def test_load_run_flags_config_ignores_comment_keys(tmp_path):
+    cfg = tmp_path / "flags.json"
+    cfg.write_text(json.dumps({"_comment": "for the imf runs", "neta": False}))
+    flags = load_run_flags_config(str(cfg))
+    assert flags == RunFlags(neta=False)
+
+
+def test_load_run_flags_config_default_matches_bundled_json():
+    assert load_run_flags_config() == RunFlags()

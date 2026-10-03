@@ -16,7 +16,7 @@ classifiers = [
 urls = { "Homepage" = "https://github.com/OscarHickman/galform_execution" }
 
 [project.scripts]
-submit-galform-job = "galform_execution.submit_galform_job:main"
+submit-galform-job = "galform_execution.cli:main"
 
 [build-system]
 requires = ["setuptools>=61", "wheel"]

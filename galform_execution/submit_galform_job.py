@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Submit GALFORM N-body tree runs to SLURM batch queue on COSMA."""
 
-import argparse
 import json
 import os
 import subprocess
@@ -92,7 +91,6 @@ _SIMULATION_CONFIG_PATH = _CONFIG_DIR / "simulations.json"
 _DUST_CONFIG_PATH = _CONFIG_DIR / "dust_params.json"
 _MODEL_CONFIG_PATH = _CONFIG_DIR / "models.json"
 _RUN_FLAGS_CONFIG_PATH = _CONFIG_DIR / "run_flags.json"
-_LEGACY_RUN_FLAGS_CONFIG_PATH = Path(__file__).parent / "run_flags.json"
 _REDSHIFT_LISTS_DIR = _CONFIG_DIR / "redshift_lists"
 
 _SIMULATION_CONFIG_DIR = _CONFIG_DIR / "simulations"
@@ -131,12 +129,15 @@ def load_simulation_configs(
     else:
         raw = _load_json(path)
 
-    return {
-        name: SimulationConfig(
-            **{k: v for k, v in cfg.items() if not k.startswith("_")}
-        )
-        for name, cfg in raw.items()
-    }
+    configs: Dict[str, SimulationConfig] = {}
+    for name, cfg in raw.items():
+        try:
+            configs[name] = SimulationConfig(
+                **{k: v for k, v in cfg.items() if not k.startswith("_")}
+            )
+        except TypeError as e:
+            raise ValueError(f"Invalid simulation config '{name}' in {path}: {e}") from e
+    return configs
 
 
 def load_dust_configs(config_path: Optional[str] = None) -> Dict[str, DustParams]:
@@ -199,34 +200,57 @@ PARTITION_CONFIGS = load_partition_configs()
 def load_run_flags_config(config_path: Optional[str] = None) -> RunFlags:
     """Load RunFlags from a JSON config file.
 
-    Looks for *config_path* if given, otherwise falls back to
-    ``config/run_flags.json`` next to this module.  Returns
-    ``RunFlags()`` defaults if the file is missing or malformed.
+    *config_path* must exist when given; otherwise the bundled
+    ``config/run_flags.json`` is used.  Keys starting with ``_`` are treated as
+    comments.  Any other unknown key is an error, so a typo cannot silently
+    leave a pipeline stage at its default.
     """
     if config_path:
         path = Path(config_path)
+        if not path.is_file():
+            raise FileNotFoundError(f"Run flags config not found: {path}")
     elif _RUN_FLAGS_CONFIG_PATH.is_file():
         path = _RUN_FLAGS_CONFIG_PATH
     else:
-        path = _LEGACY_RUN_FLAGS_CONFIG_PATH
-    if not path.is_file():
         return RunFlags()
-    with open(path) as fh:
-        data = json.load(fh)
+    data = _load_json(path)
     valid = {f.name for f in fields(RunFlags)}
+    unknown = sorted(k for k in data if k not in valid and not k.startswith("_"))
+    if unknown:
+        raise ValueError(
+            f"Unknown run flag(s) in {path}: {', '.join(unknown)}. "
+            f"Valid flags: {', '.join(sorted(valid))}"
+        )
     return RunFlags(**{k: v for k, v in data.items() if k in valid})
 
 
-def _default_cosma_user_root() -> Path:
-    """Return the default COSMA user root path."""
+def default_output_root() -> Path:
+    """Return the default COSMA output root, ``/cosma5/data/durham/$USER``."""
     user = os.environ.get("USER", Path.home().name)
     return Path(f"/cosma5/data/durham/{user}")
 
 
-def _default_galform_dir() -> Path:
-    """Return the default GALFORM source directory on COSMA."""
+def default_galform_dir() -> Path:
+    """Return the default GALFORM source directory, ``/cosma/apps/durham/$USER/galform``."""
     user = os.environ.get("USER", Path.home().name)
     return Path(f"/cosma/apps/durham/{user}/galform")
+
+
+# Private names kept for scripts and notebooks written against older releases.
+_default_cosma_user_root = default_output_root
+_default_galform_dir = default_galform_dir
+
+
+def _try_mkdir(path: Path) -> None:
+    """Create *path* if possible; generating a script must not depend on it.
+
+    Off-cluster the COSMA default paths cannot be created (``PermissionError``
+    on Linux, ``EROFS`` on a read-only root such as macOS).
+    """
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
 
 
 def _resolve_log_path(explicit: Optional[str], output_folder_name: str) -> Path:
@@ -241,10 +265,12 @@ def _resolve_log_path(explicit: Optional[str], output_folder_name: str) -> Path:
     if env_log:
         return Path(env_log)
 
-    return _default_cosma_user_root() / output_folder_name / "logs"
+    return default_output_root() / output_folder_name / "logs"
 
 
-def _validate_ivols(ivols: Sequence[int], sim_config) -> List[int]:
+def _validate_ivols(
+    ivols: Sequence[int], sim_config: Optional[SimulationConfig]
+) -> List[int]:
     """Check an explicit ivol list: non-empty, unique, integer, in [0, k)."""
     out = [int(i) for i in ivols]
     if not out:
@@ -259,25 +285,20 @@ def _validate_ivols(ivols: Sequence[int], sim_config) -> List[int]:
 
 
 def _parse_nvol_range(nvol_range: str) -> Tuple[int, int]:
-    """Parse a legacy nvol range string (e.g. ``'12'`` or ``'1001-1024'``)."""
+    """Parse a 1-based subvolume range such as ``'12'`` or ``'1001-1024'``."""
     raw = str(nvol_range).strip()
     if not raw:
         raise ValueError("nvol range must not be empty")
 
-    if "-" in raw:
-        parts = raw.split("-", maxsplit=1)
-        if len(parts) != 2:
-            raise ValueError(f"Invalid nvol range: {raw}")
-        try:
-            return int(parts[0]), int(parts[1])
-        except ValueError as e:
-            raise ValueError(f"Invalid nvol range (must be integers): {raw}") from e
-
+    first, sep, last = raw.partition("-")
     try:
-        val = int(raw)
-        return val, val
+        start = int(first)
+        end = int(last) if sep else start
     except ValueError as e:
         raise ValueError(f"Invalid nvol range (must be integer or range): {raw}") from e
+    if start < 1 or end < start:
+        raise ValueError(f"Invalid nvol range (must be 1-based and ascending): {raw}")
+    return start, end
 
 
 class GalformSubmitter:
@@ -318,12 +339,18 @@ class GalformSubmitter:
         mail_user: Optional[str] = None,
         mail_type: str = "END,FAIL",
         ivols: Optional[Sequence[int]] = None,
-    ):
+        sim_config: Optional[SimulationConfig] = None,
+        model_config: Optional[ModelConfig] = None,
+    ) -> None:
         """Configure a submitter.
 
         ``ivols``: optional explicit list of 0-based subvolume indices (the ``ivol<N>``
         output directories), for non-contiguous selections such as a random m-of-k draw.
         Mutually exclusive with ``nvol``/``nvol_range``; task id t runs ``ivols[t-1]``.
+
+        ``sim_config`` / ``model_config``: use these definitions instead of looking
+        ``nbody_sim`` / ``model`` up in ``SIMULATION_CONFIGS`` / ``MODEL_CONFIGS``,
+        e.g. for a simulation or model that is not bundled with the package.
         """
         self.galform_dir = Path(galform_dir)
         self.nbody_sim = nbody_sim
@@ -377,42 +404,40 @@ class GalformSubmitter:
         if output_base_dir is not None:
             self.output_base_dir = Path(output_base_dir)
         else:
-            self.output_base_dir = _default_cosma_user_root()
+            self.output_base_dir = default_output_root()
         self.models_dir = self.output_base_dir / output_folder_name / nbody_sim
 
         # Resolve simulation config
-        if nbody_sim in SIMULATION_CONFIGS:
-            self.sim_config = SIMULATION_CONFIGS[nbody_sim]
+        if nvol is not None and nvol_range is not None:
+            raise ValueError("Specify only one of nvol and nvol_range")
+        resolved_nvol_range = nvol if nvol is not None else nvol_range
+        self.sim_config: Optional[SimulationConfig] = (
+            sim_config if sim_config is not None else SIMULATION_CONFIGS.get(nbody_sim)
+        )
+        if self.sim_config is not None:
             default_iz_list = (
                 list(self.sim_config.iz_list) if self.sim_config.iz_list else []
             )
             self.iz_list = iz_list if iz_list is not None else default_iz_list
-            if nvol is not None and nvol_range is not None:
-                raise ValueError("Specify only one of nvol and nvol_range")
-            resolved_nvol_range = nvol if nvol is not None else nvol_range
             self.nvol_range = (
                 resolved_nvol_range
                 if resolved_nvol_range is not None
                 else self.sim_config.nvol_range
             )
         else:
-            if nvol is not None and nvol_range is not None:
-                raise ValueError("Specify only one of nvol and nvol_range")
-            resolved_nvol_range = nvol if nvol is not None else nvol_range
             if iz_list is None or (resolved_nvol_range is None and ivols is None):
                 raise ValueError(
-                    f"Unknown simulation '{nbody_sim}'. "
-                    "Provide iz_list and nvol explicitly."
+                    f"Unknown simulation '{nbody_sim}'. Pass "
+                    "sim_config=SimulationConfig(...), or provide iz_list and nvol "
+                    "explicitly."
                 )
-            self.sim_config = None
             self.iz_list = iz_list
             self.nvol_range = resolved_nvol_range
 
         # Resolve model config
-        if model in MODEL_CONFIGS:
-            self.model_config = MODEL_CONFIGS[model]
-        else:
-            self.model_config = None
+        self.model_config: Optional[ModelConfig] = (
+            model_config if model_config is not None else MODEL_CONFIGS.get(model)
+        )
 
         if self.iz is not None:
             self.iz_list = [self.iz]
@@ -494,13 +519,9 @@ class GalformSubmitter:
                 "set it in the simulation JSON before submitting."
             )
 
-        snapshot_file = Path(sim.snapshot_file)
-        if not snapshot_file.is_absolute():
-            snapshot_file = _REDSHIFT_LISTS_DIR / snapshot_file
-
         lines = [
             "# ---- N-body simulation parameters ----",
-            f"set snapshot_file          = {snapshot_file}",
+            f"set snapshot_file          = {self._snapshot_file_path()}",
             f"set aquarius_tree_file     = {sim.aquarius_tree_file}",
             f"set aquarius_particle_file = {sim.aquarius_particle_file}",
             f"set volume     = {sim.volume}",
@@ -521,10 +542,7 @@ class GalformSubmitter:
     def _generate_model_setup_block(self) -> str:
         """Generate the block that copies the base .input.ref file and applies modifications."""
         if self.model_config is None:
-            raise ValueError(
-                f"Unknown model '{self.model}'. "
-                "Add it to MODEL_CONFIGS or provide a custom model config."
-            )
+            raise ValueError(self._unknown_model_message())
         mc = self.model_config
         lines = [
             "# ---- model parameter file setup ----",
@@ -614,16 +632,45 @@ class GalformSubmitter:
             return len(self.output_iz_list) > 1
         return False
 
-    def _load_snapshot_redshifts(self) -> Dict[int, float]:
-        if self._snapshot_redshift_cache is not None:
-            return self._snapshot_redshift_cache
-        if self.sim_config is None:
-            raise ValueError("Simulation config is required to resolve output_iz_list")
+    def _unknown_model_message(self) -> str:
+        return (
+            f"Unknown model '{self.model}'. Choose one of MODEL_CONFIGS "
+            "(see `submit-galform-job --list-models`) or pass "
+            "model_config=ModelConfig(...)."
+        )
 
-        snapshot_map: Dict[int, float] = {}
+    def _snapshot_file_path(self) -> Path:
+        """Redshift list for the simulation; relative names are bundled files."""
+        if self.sim_config is None:
+            raise ValueError("Simulation config is required to locate the snapshot file")
         snapshot_file = Path(self.sim_config.snapshot_file)
         if not snapshot_file.is_absolute():
             snapshot_file = _REDSHIFT_LISTS_DIR / snapshot_file
+        return snapshot_file
+
+    def _check_snapshot_known(self, iz: int) -> None:
+        """Fail fast when *iz* is missing from a redshift list readable here.
+
+        The generated script would otherwise only discover this on the compute
+        node after queueing.  Lists not readable from this host (e.g. when
+        previewing off-cluster) are skipped.
+        """
+        try:
+            snapshots = self._load_snapshot_redshifts()
+        except OSError:
+            return
+        if iz not in snapshots:
+            raise ValueError(
+                f"Snapshot iz={iz} is not in the redshift list for "
+                f"'{self.nbody_sim}' ({self._snapshot_file_path()})"
+            )
+
+    def _load_snapshot_redshifts(self) -> Dict[int, float]:
+        if self._snapshot_redshift_cache is not None:
+            return self._snapshot_redshift_cache
+
+        snapshot_map: Dict[int, float] = {}
+        snapshot_file = self._snapshot_file_path()
 
         if not snapshot_file.exists():
             raise FileNotFoundError(f"Snapshot file not found: {snapshot_file}")
@@ -817,7 +864,7 @@ exit
             f"set ivol_list = ( {listed} )\n@ ivol        = $ivol_list[$slurm_task_id]"
         )
 
-    def _create_tcsh_script(self, iz: int) -> str:
+    def create_tcsh_script(self, iz: int) -> str:
         """Generate the inner tcsh GALFORM script for snapshot iz.
 
         This script is written to disk and invoked by the bash wrapper; it is
@@ -826,22 +873,15 @@ exit
         if self.sim_config is None:
             raise ValueError(
                 f"No simulation config for '{self.nbody_sim}'. "
-                "Provide a SimulationConfig explicitly."
+                "Pass sim_config=SimulationConfig(...)."
             )
         if self.model_config is None:
-            raise ValueError(
-                f"No model config for '{self.model}'. "
-                "Add it to MODEL_CONFIGS or provide one explicitly."
-            )
+            raise ValueError(self._unknown_model_message())
+        self._check_snapshot_known(iz)
 
         jobname = f"{self.nbody_sim}.{self.model}"
         logname = self.log_path / self.nbody_sim / f"{self.model}.%A.%a.log"
-
-        # Ensure log directory exists (best-effort)
-        try:
-            logname.parent.mkdir(parents=True, exist_ok=True)
-        except PermissionError:
-            pass
+        _try_mkdir(logname.parent)
 
         # Load COSMA modules without relying on interactive tcsh startup files.
         modulecmd = "/cosma/local/Modules/default/libexec/modulecmd.tcl"
@@ -943,6 +983,9 @@ set SAMPLE_GALS_EXE    = ${{build_dir}}/sample_gals
 """
         return script
 
+    # Alias kept for code written against releases where this was private.
+    _create_tcsh_script = create_tcsh_script
+
     def create_job_script(
         self, iz: int, tcsh_path: Optional[str] = None, mem_per_cpu: int = 4000
     ) -> str:
@@ -966,11 +1009,7 @@ set SAMPLE_GALS_EXE    = ${{build_dir}}/sample_gals
             tcsh_path = str(self.log_path / self.nbody_sim / f"{self.model}_iz{iz}.csh")
         jobname = f"{self.nbody_sim}.{self.model}"
         logname = self.log_path / self.nbody_sim / f"{self.model}.%j.log"
-
-        try:
-            logname.parent.mkdir(parents=True, exist_ok=True)
-        except PermissionError:
-            pass
+        _try_mkdir(logname.parent)
 
         partition_cfg = PARTITION_CONFIGS.get(self.partition)
         effective_cpus = (
@@ -995,6 +1034,12 @@ set SAMPLE_GALS_EXE    = ${{build_dir}}/sample_gals
 #SBATCH -A {self.account}
 #SBATCH -t {self.walltime}
 {mail_lines}
+
+# One worker per allocated CPU, so every thread pool stays single-threaded:
+# (workers x threads) must not exceed --cpus-per-task on a shared node.
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
 
 _run_worker() {{
     local task_id=$1
@@ -1070,7 +1115,7 @@ wait
             dry_run: If True, print scripts and return None without submitting.
         """
         tcsh_path = self.log_path / self.nbody_sim / f"{self.model}_iz{iz}.csh"
-        tcsh_script = self._create_tcsh_script(iz)
+        tcsh_script = self.create_tcsh_script(iz)
         bash_script = self.create_job_script(iz, str(tcsh_path), mem_per_cpu)
 
         if dry_run:
@@ -1101,265 +1146,11 @@ wait
         return job_ids
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Submit GALFORM N-body runs to SLURM batch queue on COSMA",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Submit jobs for L800 simulation with gp14 model
-  %(prog)s /path/to/galform
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    """Backwards-compatible entry point; see :func:`galform_execution.cli.main`."""
+    from galform_execution.cli import main as cli_main
 
-  # Submit jobs with custom simulation & model
-  %(prog)s /path/to/galform --nbody-sim MillGas --model b06
-
-  # Dry run to preview what would be submitted
-    %(prog)s /path/to/galform --iz 271 --nvol 12 --dry-run
-
-    # Custom snapshot list and subvolume range
-    %(prog)s /path/to/galform --iz-list 100 120 155 --nvol 1-50
-
-  # Enable/disable pipeline stages
-  %(prog)s /path/to/galform --run-galform --no-neta --no-lum-fun
-        """,
-    )
-
-    parser.add_argument(
-        "galform_dir",
-        nargs="?",
-        default=str(_default_galform_dir()),
-        help="Path to the GALFORM source directory "
-        f"(default: {_default_galform_dir()}; contains build/, *.input.ref, etc.)",
-    )
-
-    parser.add_argument(
-        "--nbody-sim", default="L800", help="N-body simulation name (default: L800)"
-    )
-    parser.add_argument(
-        "--model", default="gp14", help="GALFORM model name (default: gp14)"
-    )
-    parser.add_argument("--iz", type=int, help="Single snapshot number to submit")
-    parser.add_argument(
-        "--nvol",
-        help='Subvolume range to process (e.g. "1-10" or "12")',
-    )
-    parser.add_argument(
-        "--output-base-dir",
-        help="Root directory for GALFORM outputs (default: /cosma5/data/durham/$USER)",
-    )
-    parser.add_argument(
-        "--output-folder-name",
-        default="Galform_Out",
-        help="Folder name under the base output directory (default: Galform_Out)",
-    )
-    parser.add_argument("--log-path", help="Directory for SLURM log files")
-    parser.add_argument(
-        "--galform-exe",
-        help="Path to a custom GALFORM executable (overrides build/galform2)",
-    )
-    parser.add_argument(
-        "--partition", default="cosma5", help="SLURM partition (default: cosma5)"
-    )
-    parser.add_argument(
-        "--account", default="durham", help="SLURM account (default: durham)"
-    )
-    parser.add_argument(
-        "--walltime", default="72:00:00", help="Job wall-time (default: 72:00:00)"
-    )
-    parser.add_argument(
-        "--mail-user",
-        default=None,
-        help="Email address for SLURM job notifications",
-    )
-    parser.add_argument(
-        "--mail-type",
-        default="END,FAIL",
-        help="SLURM mail event types (default: END,FAIL)",
-    )
-    parser.add_argument(
-        "--iz-list", type=int, nargs="+", help="Override default snapshot list"
-    )
-    parser.add_argument(
-        "--output-iz-list",
-        type=int,
-        nargs="+",
-        help="Output multiple snapshots in one run (sets nout/zout)",
-    )
-    parser.add_argument(
-        "--output-z-list",
-        type=float,
-        nargs="+",
-        help="Output multiple redshifts in one run (sets nout/zout)",
-    )
-    parser.add_argument("--nvol-range", help="Deprecated alias for --nvol")
-    parser.add_argument(
-        "--run-flags-config",
-        help="Path to a JSON file overriding default run flags "
-        "(defaults to config/run_flags.json next to this script)",
-    )
-
-    # Run-flag toggles — these override the defaults from run_flags.json
-    flag_group = parser.add_argument_group("pipeline stages")
-    flag_group.add_argument(
-        "--run-galform",
-        action="store_true",
-        default=False,
-        help="Force galform2 executable on (overrides JSON default)",
-    )
-    flag_group.add_argument(
-        "--no-galform",
-        action="store_true",
-        default=False,
-        help="Force galform2 executable off (overrides JSON default)",
-    )
-    flag_group.add_argument(
-        "--no-neta", action="store_true", help="Disable neta_ave dust calculation"
-    )
-    flag_group.add_argument(
-        "--no-lum-fun",
-        action="store_true",
-        help="Disable luminosity function calculation",
-    )
-    flag_group.add_argument(
-        "--no-study-smf",
-        action="store_true",
-        help="Disable stellar mass function output",
-    )
-    flag_group.add_argument(
-        "--run-dust-props", action="store_true", help="Enable dust properties output"
-    )
-    flag_group.add_argument(
-        "--run-samp-z0", action="store_true", help="Enable z=0 galaxy sample output"
-    )
-
-    tree_group = parser.add_argument_group("tree-output toggles")
-    tree_group.add_argument(
-        "--build-galaxy-trees",
-        action="store_true",
-        help="Set build_galaxy_trees = .true. in GALFORM input",
-    )
-    tree_group.add_argument(
-        "--no-build-galaxy-trees",
-        action="store_true",
-        help="Set build_galaxy_trees = .false. in GALFORM input",
-    )
-    tree_group.add_argument(
-        "--output-halo-trees",
-        action="store_true",
-        help="Set output_halo_trees = .true. in GALFORM input",
-    )
-    tree_group.add_argument(
-        "--no-output-halo-trees",
-        action="store_true",
-        help="Set output_halo_trees = .false. in GALFORM input",
-    )
-
-    parser.add_argument(
-        "--dry-run", action="store_true", help="Print job scripts without submitting"
-    )
-    parser.add_argument(
-        "--list-simulations",
-        action="store_true",
-        help="List available simulation configurations and exit",
-    )
-    parser.add_argument(
-        "--list-models",
-        action="store_true",
-        help="List available model configurations and exit",
-    )
-
-    args = parser.parse_args()
-
-    if args.list_simulations:
-        print("Available simulation configurations:")
-        fmt = f"{'Simulation':<20} {'Snapshots (iz)':<40} {'Subvolumes':<15}"
-        print(fmt)
-        print("-" * 75)
-        for name, cfg in sorted(SIMULATION_CONFIGS.items()):
-            iz_str = str(cfg.iz_list) if cfg.iz_list else "(not set)"
-            if len(iz_str) > 37:
-                iz_str = iz_str[:34] + "..."
-            print(f"{name:<20} {iz_str:<40} {cfg.nvol_range:<15}")
-        return 0
-
-    if args.list_models:
-        print("Available model configurations:")
-        fmt = f"{'Model':<25} {'Base Input File':<45} {'Dust'}"
-        print(fmt)
-        print("-" * 80)
-        for name, cfg in sorted(MODEL_CONFIGS.items()):
-            dust_label = f"fcloud={cfg.dust_params.fcloud}"
-            print(f"{name:<25} {cfg.base_inputs_file:<45} {dust_label}")
-        return 0
-
-    # Load defaults from JSON, then apply any explicit CLI overrides on top.
-    _json_defaults = load_run_flags_config(args.run_flags_config)
-    run_flags = RunFlags(
-        galform=(
-            True
-            if args.run_galform
-            else (False if args.no_galform else _json_defaults.galform)
-        ),
-        neta=False if args.no_neta else _json_defaults.neta,
-        lum_fun=False if args.no_lum_fun else _json_defaults.lum_fun,
-        study_stellar_mass_function=(
-            False if args.no_study_smf else _json_defaults.study_stellar_mass_function
-        ),
-        dust_props=True if args.run_dust_props else _json_defaults.dust_props,
-        samp_z0=True if args.run_samp_z0 else _json_defaults.samp_z0,
-    )
-
-    input_overrides: Dict[str, str] = {}
-    if args.build_galaxy_trees and args.no_build_galaxy_trees:
-        raise ValueError(
-            "Use only one of --build-galaxy-trees or --no-build-galaxy-trees"
-        )
-    if args.output_halo_trees and args.no_output_halo_trees:
-        raise ValueError(
-            "Use only one of --output-halo-trees or --no-output-halo-trees"
-        )
-    if args.output_iz_list and args.output_z_list:
-        raise ValueError("Use only one of --output-iz-list or --output-z-list")
-
-    if args.build_galaxy_trees:
-        input_overrides["build_galaxy_trees"] = ".true."
-    if args.no_build_galaxy_trees:
-        input_overrides["build_galaxy_trees"] = ".false."
-
-    if args.output_halo_trees:
-        input_overrides["output_halo_trees"] = ".true."
-    if args.no_output_halo_trees:
-        input_overrides["output_halo_trees"] = ".false."
-
-    try:
-        submitter = GalformSubmitter(
-            galform_dir=args.galform_dir,
-            nbody_sim=args.nbody_sim,
-            model=args.model,
-            iz=args.iz,
-            nvol=args.nvol,
-            output_base_dir=args.output_base_dir,
-            output_folder_name=args.output_folder_name,
-            log_path=args.log_path,
-            partition=args.partition,
-            account=args.account,
-            walltime=args.walltime,
-            mail_user=args.mail_user,
-            mail_type=args.mail_type,
-            iz_list=args.iz_list,
-            nvol_range=args.nvol_range,
-            run_flags=run_flags,
-            input_overrides=input_overrides,
-            output_redshifts=args.output_z_list,
-            output_iz_list=args.output_iz_list,
-            galform_exe=args.galform_exe,
-        )
-        submitter.submit_all_jobs(dry_run=args.dry_run)
-        return 0
-
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
+    return cli_main(argv)
 
 
 if __name__ == "__main__":

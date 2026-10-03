@@ -1,4 +1,6 @@
-from galform_execution.submit_galform_job import main
+import sys
+
+from galform_execution.cli import main
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
