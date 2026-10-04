@@ -1,5 +1,5 @@
 {% set name = "galform_execution" %}
-{% set version = "0.1.6" %}
+{% set version = "0.3.0" %}
 
 package:
   name: {{ name|lower }}
@@ -10,7 +10,7 @@ source:
   # Update sha256 after each release using:
   #   curl -s https://pypi.org/pypi/galform_execution/json | python -c \
   #     "import sys,json; d=json.load(sys.stdin); \
-  #      [print(f['digests']['sha256']) for f in d['releases']['0.1.6'] \
+  #      [print(f['digests']['sha256']) for f in d['releases']['<version>'] \
   #       if f['filename'].endswith('.tar.gz')]"
   sha256: UPDATE_AFTER_RELEASE
 
@@ -21,22 +21,22 @@ build:
 
 requirements:
   host:
-    - python >=3.8
+    - python >=3.9
     - pip
-    - setuptools >=61
-    - wheel
+    - setuptools >=77
   run:
-    - python >=3.8
+    - python >=3.9
 
 test:
   imports:
     - galform_execution
   commands:
     - submit-galform-job --help
+    - submit-galform-job --version
 
 about:
   home: https://github.com/OscarHickman/galform_execution
-  summary: GALFORM execution helper utilities for SLURM submission on COSMA
+  summary: Generate and submit GALFORM runs on N-body merger trees to SLURM (COSMA HPC)
   description: |
     A Python-based utility to manage GALFORM N-body simulation submissions
     to SLURM on COSMA. Automates SLURM batch script generation, parameter

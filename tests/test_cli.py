@@ -8,7 +8,7 @@ from unittest.mock import patch
 import pytest
 
 from galform_execution import __version__
-from galform_execution.submit_galform_job import main
+from galform_execution.cli import main
 
 SBATCH = "galform_execution.submit_galform_job.subprocess.run"
 
@@ -86,6 +86,15 @@ def test_list_simulations(capsys):
     assert rc == 0
     assert "Available simulation configurations" in out
     assert "L800" in out and "MillGas" in out and "EagleDM" in out
+
+
+def test_list_simulations_flags_entries_that_cannot_be_submitted(capsys):
+    rc, out, _ = _run(capsys, "--list-simulations")
+    assert rc == 0
+    rows = {ln.split()[0]: ln for ln in out.splitlines()[3:] if ln.strip()}
+    assert "incomplete: volume, iz0" in rows["COLIBRE-L400m7"]
+    assert "incomplete: volume" in rows["nifty62.5"]
+    assert "incomplete" not in rows["L800"]
 
 
 def test_help_exits_zero(capsys):
@@ -231,9 +240,7 @@ def test_missing_run_flags_config_is_an_error(capsys, galform_dir, tmp_path):
         ["--ivols", "1", "2"],
     ],
 )
-def test_conflicting_options_are_rejected_by_the_parser(
-    capsys, galform_dir, conflict
-):
+def test_conflicting_options_are_rejected_by_the_parser(capsys, galform_dir, conflict):
     with pytest.raises(SystemExit) as exc:
         _l800_dry_run(capsys, galform_dir, *conflict)
     assert exc.value.code == 2
@@ -354,3 +361,26 @@ def test_no_snapshots_to_submit_is_an_error(capsys, galform_dir, tmp_path):
     )
     assert rc == 1
     assert "No snapshots" in err
+
+
+def test_tree_toggles_set_input_parameters(capsys, galform_dir):
+    rc, out, _ = _l800_dry_run(
+        capsys, galform_dir, "--build-galaxy-trees", "--no-output-halo-trees"
+    )
+    assert rc == 0
+    assert (
+        "./replace_variable.csh $galform_inputs_file build_galaxy_trees .true." in out
+    )
+    assert (
+        "./replace_variable.csh $galform_inputs_file output_halo_trees .false." in out
+    )
+
+
+def test_warns_when_sbatch_reports_no_job_id(capsys, galform_dir, log_dir):
+    odd = subprocess.CompletedProcess(["sbatch"], 0, stdout=b"queued\n", stderr=b"")
+    with patch(SBATCH, return_value=odd):
+        rc, _, err = _run(
+            capsys, galform_dir, "--iz", "271", "--nvol", "1-2", "--log-path", log_dir
+        )
+    assert rc == 0
+    assert "no job id for iz=271" in err

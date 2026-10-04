@@ -8,7 +8,7 @@ import sys
 import time
 from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 
 @dataclass
@@ -32,6 +32,10 @@ class SimulationConfig:
     iz0: Optional[int] = None
     lbox: Optional[float] = None
     mpart: Optional[float] = None
+
+    def missing_fields(self) -> List[str]:
+        """Optional fields that must still be set before jobs can be generated."""
+        return [name for name in ("volume", "iz0") if getattr(self, name) is None]
 
 
 @dataclass
@@ -87,7 +91,6 @@ class RunFlags:
 
 
 _CONFIG_DIR = Path(__file__).parent / "config"
-_SIMULATION_CONFIG_PATH = _CONFIG_DIR / "simulations.json"
 _DUST_CONFIG_PATH = _CONFIG_DIR / "dust_params.json"
 _MODEL_CONFIG_PATH = _CONFIG_DIR / "models.json"
 _RUN_FLAGS_CONFIG_PATH = _CONFIG_DIR / "run_flags.json"
@@ -102,9 +105,10 @@ _TRANSIENT_SUBMIT_ERROR_MARKERS = (
 )
 
 
-def _load_json(path: Path) -> Dict[str, dict]:
+def _load_json(path: Path) -> Dict[str, Any]:
     with open(path) as fh:
-        return json.load(fh)
+        data: Dict[str, Any] = json.load(fh)
+    return data
 
 
 def load_simulation_configs(
@@ -114,15 +118,10 @@ def load_simulation_configs(
 
     Supports a single JSON file or a directory containing ``*.json`` files.
     """
-    if config_path:
-        path = Path(config_path)
-    elif _SIMULATION_CONFIG_DIR.is_dir():
-        path = _SIMULATION_CONFIG_DIR
-    else:
-        path = _SIMULATION_CONFIG_PATH
+    path = Path(config_path) if config_path else _SIMULATION_CONFIG_DIR
 
     if path.is_dir():
-        merged: Dict[str, dict] = {}
+        merged: Dict[str, Any] = {}
         for file_path in sorted(path.glob("*.json")):
             merged.update(_load_json(file_path))
         raw = merged
@@ -136,7 +135,9 @@ def load_simulation_configs(
                 **{k: v for k, v in cfg.items() if not k.startswith("_")}
             )
         except TypeError as e:
-            raise ValueError(f"Invalid simulation config '{name}' in {path}: {e}") from e
+            raise ValueError(
+                f"Invalid simulation config '{name}' in {path}: {e}"
+            ) from e
     return configs
 
 
@@ -205,14 +206,9 @@ def load_run_flags_config(config_path: Optional[str] = None) -> RunFlags:
     comments.  Any other unknown key is an error, so a typo cannot silently
     leave a pipeline stage at its default.
     """
-    if config_path:
-        path = Path(config_path)
-        if not path.is_file():
-            raise FileNotFoundError(f"Run flags config not found: {path}")
-    elif _RUN_FLAGS_CONFIG_PATH.is_file():
-        path = _RUN_FLAGS_CONFIG_PATH
-    else:
-        return RunFlags()
+    path = Path(config_path) if config_path else _RUN_FLAGS_CONFIG_PATH
+    if not path.is_file():
+        raise FileNotFoundError(f"Run flags config not found: {path}")
     data = _load_json(path)
     valid = {f.name for f in fields(RunFlags)}
     unknown = sorted(k for k in data if k not in valid and not k.startswith("_"))
@@ -410,7 +406,13 @@ class GalformSubmitter:
         # Resolve simulation config
         if nvol is not None and nvol_range is not None:
             raise ValueError("Specify only one of nvol and nvol_range")
-        resolved_nvol_range = nvol if nvol is not None else nvol_range
+        if ivols is not None and (nvol is not None or nvol_range is not None):
+            raise ValueError("Specify only one of ivols and nvol/nvol_range")
+        selected_range = nvol if nvol is not None else nvol_range
+        unknown_sim = (
+            f"Unknown simulation '{nbody_sim}'. Pass sim_config=SimulationConfig(...), "
+            "or provide iz_list and nvol explicitly."
+        )
         self.sim_config: Optional[SimulationConfig] = (
             sim_config if sim_config is not None else SIMULATION_CONFIGS.get(nbody_sim)
         )
@@ -419,20 +421,12 @@ class GalformSubmitter:
                 list(self.sim_config.iz_list) if self.sim_config.iz_list else []
             )
             self.iz_list = iz_list if iz_list is not None else default_iz_list
-            self.nvol_range = (
-                resolved_nvol_range
-                if resolved_nvol_range is not None
-                else self.sim_config.nvol_range
-            )
+            if selected_range is None:
+                selected_range = self.sim_config.nvol_range
+        elif iz_list is None:
+            raise ValueError(unknown_sim)
         else:
-            if iz_list is None or (resolved_nvol_range is None and ivols is None):
-                raise ValueError(
-                    f"Unknown simulation '{nbody_sim}'. Pass "
-                    "sim_config=SimulationConfig(...), or provide iz_list and nvol "
-                    "explicitly."
-                )
             self.iz_list = iz_list
-            self.nvol_range = resolved_nvol_range
 
         # Resolve model config
         self.model_config: Optional[ModelConfig] = (
@@ -442,29 +436,25 @@ class GalformSubmitter:
         if self.iz is not None:
             self.iz_list = [self.iz]
 
+        self.ivols: Optional[List[int]] = None
         if ivols is not None:
-            if nvol is not None or nvol_range is not None:
-                raise ValueError("Specify only one of ivols and nvol/nvol_range")
             self.ivols = _validate_ivols(ivols, self.sim_config)
-            self.nvol_range = (
-                f"{min(self.ivols) + 1}-{max(self.ivols) + 1}"  # informational
-            )
+            # Informational only: the ivols themselves drive the job.
+            self.nvol_range = f"{min(self.ivols) + 1}-{max(self.ivols) + 1}"
             self.nvol_start, self.nvol_end = 1, len(self.ivols)
-            self.nvol_count = len(self.ivols)
+        elif selected_range is not None:
+            self.nvol_range = selected_range
+            self.nvol_start, self.nvol_end = _parse_nvol_range(selected_range)
         else:
-            self.ivols = None
-            self.nvol_start, self.nvol_end = _parse_nvol_range(self.nvol_range)
-            self.nvol_count = self.nvol_end - self.nvol_start + 1
+            raise ValueError(unknown_sim)
+        self.nvol_count = self.nvol_end - self.nvol_start + 1
 
         # Validate
         if not self.galform_dir.is_dir():
             raise FileNotFoundError(f"GALFORM directory not found: {self.galform_dir}")
-        if self.galform_exe_override:
-            galform_exe = self.galform_exe_override
-        else:
-            galform_exe = self.galform_dir / "build" / "galform2"
-        if not galform_exe.exists():
-            raise FileNotFoundError(f"GALFORM executable not found: {galform_exe}")
+        exe_path = self.galform_exe_override or self.galform_dir / "build" / "galform2"
+        if not exe_path.exists():
+            raise FileNotFoundError(f"GALFORM executable not found: {exe_path}")
 
     @staticmethod
     def _bool_to_csh(value: bool) -> str:
@@ -508,14 +498,11 @@ class GalformSubmitter:
         return "\n".join(lines)
 
     def _generate_simulation_block(self, sim: SimulationConfig) -> str:
-        if sim.volume is None:
+        missing = sim.missing_fields()
+        if missing:
             raise ValueError(
-                f"SimulationConfig for '{self.nbody_sim}' has no 'volume' — "
-                "set it in the simulation JSON before submitting."
-            )
-        if sim.iz0 is None:
-            raise ValueError(
-                f"SimulationConfig for '{self.nbody_sim}' has no 'iz0' — "
+                f"SimulationConfig for '{self.nbody_sim}' has no "
+                f"{' or '.join(repr(m) for m in missing)} — "
                 "set it in the simulation JSON before submitting."
             )
 
@@ -584,7 +571,8 @@ class GalformSubmitter:
             "./replace_variable.csh $galform_inputs_file append_ivolume .true.",
             "./replace_variable.csh $galform_inputs_file aquarius_tree_file $aquarius_tree_file",
         ]
-        if self.nbody_sim != "nifty62.5":
+        # Trees without particle lists (e.g. nifty62.5) leave this empty.
+        if self.sim_config is not None and self.sim_config.aquarius_particle_file:
             lines.append(
                 "./replace_variable.csh $galform_inputs_file aquarius_particle_file $aquarius_particle_file"
             )
@@ -642,7 +630,9 @@ class GalformSubmitter:
     def _snapshot_file_path(self) -> Path:
         """Redshift list for the simulation; relative names are bundled files."""
         if self.sim_config is None:
-            raise ValueError("Simulation config is required to locate the snapshot file")
+            raise ValueError(
+                "Simulation config is required to locate the snapshot file"
+            )
         snapshot_file = Path(self.sim_config.snapshot_file)
         if not snapshot_file.is_absolute():
             snapshot_file = _REDSHIFT_LISTS_DIR / snapshot_file
@@ -782,7 +772,7 @@ if( $galform == true ) then
     $GALFORM2_EXE $output_dir $galform_inputs_file  -ivolume=$ivol
     if (( $status != 0 ) || ! ( -e ${output_dir}/global )) then
         echo Galform run failed, aborting script
-        exit
+        exit 1
     endif
 endif
 
@@ -949,7 +939,7 @@ set z = `awk -v iz=$iz '$1==iz {{print $2}}' $snapshot_file`
 set z0 = `awk -v iz=${{iz0}} '$1==iz {{print $2}}' $snapshot_file`
 if ($z == '') then
     echo no redshift for snapshot $iz in file $snapshot_file
-    exit
+    exit 1
 endif
 echo running snapshot iz= $iz,   redshift z= $z
 
@@ -1041,18 +1031,32 @@ export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 
+# Each ivol's exit status is checked and any failure fails the job, so sacct shows a dead ivol
+# (an ignored status once let 24 of 80 runs with dead ivols read as COMPLETED).
 _run_worker() {{
-    local task_id=$1
+    local task_id=$1 rc=0 status
     while [ $task_id -le {self.nvol_count} ]; do
         env SLURM_ARRAY_TASK_ID=$task_id tcsh -ef {tcsh_path}
+        status=$?
+        if [ $status -ne 0 ]; then
+            echo "galform_execution: ivol task $task_id exited with status $status" >&2
+            rc=1
+        fi
         task_id=$(( task_id + {effective_cpus} ))
     done
+    return $rc
 }}
 
+pids=()
 for cpu_id in $(seq 1 {effective_cpus}); do
     _run_worker $cpu_id &
+    pids+=($!)
 done
-wait
+failed=0
+for pid in "${{pids[@]}}"; do
+    wait "$pid" || failed=1
+done
+exit $failed
 """
         return script
 
@@ -1095,6 +1099,7 @@ wait
                     f"(attempt {attempt + 1}/{self.submit_retries})."
                 )
                 time.sleep(delay_s)
+        raise AssertionError("unreachable: submit_retries is at least 1")
 
     def submit_job(
         self,

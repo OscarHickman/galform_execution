@@ -3,6 +3,7 @@
 import errno
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -280,9 +281,6 @@ def test_unknown_simulation():
         assert submitter.iz_list == [100]
 
 
-
-
-
 def test_parse_nvol_range_supports_single_and_range():
     """nvol parser should support a single value and an explicit range."""
     assert _parse_nvol_range("12") == (12, 12)
@@ -304,8 +302,6 @@ def test_high_nvol_offset_in_tcsh_script():
 
         script = submitter._create_tcsh_script(iz=207)
         assert "@ ivol        = $slurm_task_id + 1001 - 2" in script
-
-
 
 
 def test_log_path_creation():
@@ -936,7 +932,9 @@ def test_job_wrapper_caps_thread_pools_to_one_per_worker(galform_dir):
     script = submitter.create_job_script(iz=100, tcsh_path="/x.csh")
     for var in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"):
         assert f"export {var}=1" in script
-    assert script.index("export OMP_NUM_THREADS=1") < script.index("_run_worker $cpu_id &")
+    assert script.index("export OMP_NUM_THREADS=1") < script.index(
+        "_run_worker $cpu_id &"
+    )
 
 
 def test_unwritable_log_dir_does_not_break_script_generation(galform_dir, monkeypatch):
@@ -1051,3 +1049,212 @@ def test_load_run_flags_config_ignores_comment_keys(tmp_path):
 
 def test_load_run_flags_config_default_matches_bundled_json():
     assert load_run_flags_config() == RunFlags()
+
+
+# --------------------------------------------------------------------------
+# Multi-output runs (output_iz_list / output_redshifts)
+# --------------------------------------------------------------------------
+
+
+def test_output_iz_list_resolves_redshifts_from_snapshot_list(galform_dir):
+    submitter = GalformSubmitter(
+        galform_dir=galform_dir,
+        nbody_sim="L800",
+        iz=271,
+        nvol="1-2",
+        output_iz_list=[271, 100],
+    )
+    script = submitter.create_tcsh_script(271)
+    assert "./replace_variable.csh $galform_inputs_file nout 2" in script
+    assert "./replace_vector.csh $galform_inputs_file zout 0 4.30093" in script
+
+
+def test_output_iz_list_with_unknown_snapshot_raises(galform_dir):
+    submitter = GalformSubmitter(
+        galform_dir=galform_dir,
+        nbody_sim="L800",
+        iz=271,
+        nvol="1-2",
+        output_iz_list=[271, 99999],
+    )
+    with pytest.raises(ValueError, match="99999"):
+        submitter.create_tcsh_script(271)
+
+
+def test_output_redshifts_and_output_iz_list_are_exclusive(galform_dir):
+    with pytest.raises(ValueError, match="only one of output_redshifts"):
+        GalformSubmitter(
+            galform_dir=galform_dir,
+            nbody_sim="L800",
+            output_redshifts=[0.0],
+            output_iz_list=[271],
+        )
+
+
+def test_multi_output_tree_building_keeps_descendants(galform_dir):
+    submitter = GalformSubmitter(
+        galform_dir=galform_dir,
+        nbody_sim="L800",
+        iz=271,
+        nvol="1-2",
+        output_iz_list=[271, 100],
+        input_overrides={"build_galaxy_trees": "T"},
+    )
+    assert submitter.input_overrides["mgalmin_output_descendants"] == ".true."
+
+
+def test_snapshot_list_parsing_skips_comments_and_malformed_lines(
+    galform_dir, tmp_path
+):
+    snapshots = tmp_path / "redshift_list"
+    snapshots.write_text("# iz  z\n\n5\nx y\n10 2.5\n20 0.0\n")
+    submitter = GalformSubmitter(
+        galform_dir=galform_dir,
+        nbody_sim="MySim",
+        iz=20,
+        sim_config=_custom_sim(snapshot_file=str(snapshots), iz0=20),
+        output_iz_list=[10, 20],
+    )
+    script = submitter.create_tcsh_script(20)
+    assert "./replace_vector.csh $galform_inputs_file zout 2.5 0" in script
+
+
+def test_output_iz_list_needs_a_readable_snapshot_file(galform_dir, tmp_path):
+    submitter = GalformSubmitter(
+        galform_dir=galform_dir,
+        nbody_sim="MySim",
+        iz=271,
+        sim_config=_custom_sim(snapshot_file=str(tmp_path / "missing")),
+        output_iz_list=[271, 207],
+    )
+    with pytest.raises(FileNotFoundError, match="missing"):
+        submitter.create_tcsh_script(271)
+
+
+# --------------------------------------------------------------------------
+# Argument validation
+# --------------------------------------------------------------------------
+
+
+def test_nvol_and_nvol_range_are_exclusive(galform_dir):
+    with pytest.raises(ValueError, match="only one of nvol and nvol_range"):
+        GalformSubmitter(
+            galform_dir=galform_dir, nbody_sim="L800", nvol="1-2", nvol_range="1-2"
+        )
+
+
+def test_unknown_simulation_needs_a_subvolume_selection(galform_dir):
+    with pytest.raises(ValueError, match="Unknown simulation"):
+        GalformSubmitter(galform_dir=galform_dir, nbody_sim="Nope", iz_list=[1])
+
+
+def test_incomplete_simulation_cannot_generate_scripts(galform_dir):
+    """nifty62.5 is bundled without a volume until its trees are located."""
+    submitter = GalformSubmitter(galform_dir=galform_dir, nbody_sim="nifty62.5")
+    with pytest.raises(ValueError, match="'volume'"):
+        submitter.create_tcsh_script(61)
+
+
+def test_empty_particle_file_removes_the_parameter(galform_dir):
+    """Trees without particle lists leave aquarius_particle_file empty, and
+    the parameter must then be deleted rather than set to nothing."""
+    submitter = GalformSubmitter(
+        galform_dir=galform_dir,
+        nbody_sim="MySim",
+        sim_config=_custom_sim(aquarius_particle_file=""),
+    )
+    script = submitter.create_tcsh_script(271)
+    assert "./delete_variable.csh $galform_inputs_file aquarius_particle_file" in script
+    assert (
+        "replace_variable.csh $galform_inputs_file aquarius_particle_file" not in script
+    )
+
+
+def test_custom_galform_executable(galform_dir, tmp_path):
+    exe = tmp_path / "galform2_debug"
+    exe.touch()
+    submitter = GalformSubmitter(
+        galform_dir=galform_dir, nbody_sim="L800", galform_exe=str(exe)
+    )
+    assert f"setenv GALFORM2_EXE_OVERRIDE {exe}" in submitter.create_tcsh_script(100)
+    with pytest.raises(FileNotFoundError, match="executable not found"):
+        GalformSubmitter(
+            galform_dir=galform_dir,
+            nbody_sim="L800",
+            galform_exe=str(tmp_path / "missing"),
+        )
+
+
+# --------------------------------------------------------------------------
+# Submitting several snapshots
+# --------------------------------------------------------------------------
+
+
+def _sbatch_results(*stdouts):
+    return [
+        subprocess.CompletedProcess(["sbatch"], 0, stdout=out, stderr=b"")
+        for out in stdouts
+    ]
+
+
+def test_submit_all_jobs_returns_one_job_id_per_snapshot(galform_dir, log_dir):
+    submitter = GalformSubmitter(
+        galform_dir=galform_dir,
+        nbody_sim="L800",
+        iz_list=[271, 207],
+        nvol="1-2",
+        log_path=str(log_dir),
+    )
+    results = _sbatch_results(b"Submitted batch job 1\n", b"Submitted batch job 2\n")
+    with patch(
+        "galform_execution.submit_galform_job.subprocess.run", side_effect=results
+    ):
+        assert submitter.submit_all_jobs() == ["1", "2"]
+    assert (log_dir / "L800" / "gp14_iz271.csh").exists()
+    assert (log_dir / "L800" / "gp14_iz207.csh").exists()
+
+
+def test_submit_all_jobs_dry_run_submits_nothing(galform_dir, capsys):
+    submitter = GalformSubmitter(
+        galform_dir=galform_dir, nbody_sim="L800", iz_list=[271, 207], nvol="1-2"
+    )
+    with patch("galform_execution.submit_galform_job.subprocess.run") as sbatch:
+        assert submitter.submit_all_jobs(dry_run=True) == []
+    sbatch.assert_not_called()
+    assert capsys.readouterr().out.count("DRY RUN") == 2
+
+
+def test_sbatch_output_without_job_id_returns_none(galform_dir, log_dir):
+    submitter = GalformSubmitter(
+        galform_dir=galform_dir,
+        nbody_sim="L800",
+        iz=271,
+        nvol="1-2",
+        log_path=str(log_dir),
+    )
+    with patch(
+        "galform_execution.submit_galform_job.subprocess.run",
+        side_effect=_sbatch_results(b"sbatch: queued\n"),
+    ):
+        assert submitter.submit_job(271) is None
+
+
+@pytest.mark.skipif(shutil.which("tcsh") is None, reason="needs tcsh")
+@pytest.mark.parametrize("fail_task, expected_rc", [(None, 0), (2, 1)])
+def test_job_wrapper_reports_dead_ivols_to_slurm(galform_dir, tmp_path, fail_task, expected_rc):
+    """A dead ivol must fail the job. The wrapper used to ignore each ivol's exit status, so
+    sacct said COMPLETED for runs whose ivols had died (2026-10-03: 24 of 80 runs)."""
+    csh = tmp_path / "g.csh"
+    csh.write_text(f"if ( $SLURM_ARRAY_TASK_ID == {fail_task or 0} ) exit 3\nexit 0\n")
+    submitter = GalformSubmitter(galform_dir=galform_dir, nbody_sim="L800", iz=100, nvol="1-3")
+    script = submitter.create_job_script(iz=100, tcsh_path=str(csh))
+    r = subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=60)
+    assert r.returncode == expected_rc
+    assert ("ivol task 2 exited with status 3" in r.stderr) == (fail_task is not None)
+
+
+def test_tcsh_galform_failure_exits_nonzero(galform_dir):
+    script = GalformSubmitter(
+        galform_dir=galform_dir, nbody_sim="L800", iz=100, nvol="1-2"
+    ).create_tcsh_script(100)
+    assert "aborting script\n        exit 1" in script

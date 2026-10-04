@@ -170,9 +170,7 @@ def _add_slurm_arguments(parser: argparse.ArgumentParser) -> None:
         metavar="MB",
         help="Memory per CPU in MB (default: 4000)",
     )
-    group.add_argument(
-        "--mail-user", help="Email address for SLURM job notifications"
-    )
+    group.add_argument("--mail-user", help="Email address for SLURM job notifications")
     group.add_argument(
         "--mail-type",
         default="END,FAIL",
@@ -293,13 +291,15 @@ def _input_overrides(args: argparse.Namespace) -> Dict[str, str]:
 
 def _print_simulations(simulations: Mapping[str, SimulationConfig]) -> None:
     print("Available simulation configurations:")
-    print(f"{'Simulation':<20} {'Snapshots (iz)':<40} {'Subvolumes':<15}")
-    print("-" * 75)
+    print(f"{'Simulation':<20} {'Snapshots (iz)':<40} {'Subvolumes':<11} Status")
+    print("-" * 90)
     for name, cfg in sorted(simulations.items()):
         iz_str = str(cfg.iz_list) if cfg.iz_list else "(not set)"
         if len(iz_str) > 37:
             iz_str = iz_str[:34] + "..."
-        print(f"{name:<20} {iz_str:<40} {cfg.nvol_range:<15}")
+        missing = cfg.missing_fields()
+        status = f"incomplete: {', '.join(missing)}" if missing else "ready"
+        print(f"{name:<20} {iz_str:<40} {cfg.nvol_range:<11} {status}")
 
 
 def _print_models(models: Mapping[str, ModelConfig]) -> None:
