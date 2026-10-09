@@ -5,16 +5,14 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_call:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  build-test-lint:
+  lint:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -23,30 +21,83 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Ruff
+        run: uv run --frozen ruff check galform_execution tests
+
+      - name: Black
+        run: uv run --frozen black --check galform_execution tests
+
+      - name: isort
+        run: uv run --frozen isort --check-only galform_execution tests
+
+      - name: mypy
+        run: uv run --frozen mypy galform_execution
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.9', '3.10', '3.11', '3.12', '3.13', '3.14']
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install tcsh (generated job scripts are executed by the tests)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tcsh
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
           python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: |
-          uv venv --clear
-          uv pip install -r requirements.txt
-          uv pip install -e .
-
-      - name: Run Ruff (lint and syntax)
-        run: |
-          uv run ruff check galform_execution
-
-      - name: Run isort (import order check)
-        run: |
-          uv run isort --check-only galform_execution
-
-      - name: Run Black (format check)
-        run: |
-          uv run black --check galform_execution tests
-
-      - name: Build package
-        run: |
-          uv build
+        run: uv sync --frozen
 
       - name: Run tests
+        run: uv run --frozen pytest --cov
+
+  package:
+    # Build the sdist and wheel, then run the sdist's test suite against the
+    # installed wheel -- what a user installing from PyPI actually gets.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install tcsh
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tcsh
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: '3.12'
+
+      - name: Build
+        run: uv build
+
+      - name: Check distribution metadata
+        run: uvx twine check --strict dist/*
+
+      - name: Test the installed wheel
         run: |
-          uv run pytest tests
+          uv venv /tmp/wheel-env
+          uv pip install --python /tmp/wheel-env/bin/python dist/*.whl pytest
+          mkdir /tmp/sdist && tar xzf dist/*.tar.gz -C /tmp/sdist --strip-components=1
+          cd /tmp/sdist
+          rm -r galform_execution  # import the installed wheel, not this source copy
+          /tmp/wheel-env/bin/submit-galform-job --version
+          /tmp/wheel-env/bin/python -m pytest -p no:cacheprovider --import-mode=importlib tests
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/

@@ -1,5 +1,10 @@
 name: Publish
 
+# Release: bump the version in pyproject.toml, CITATION.cff and conda/meta.yaml,
+# add a CHANGELOG entry, then push a matching tag (e.g. v0.3.0).
+#
+# Keep this file's name: PyPI trusted publishing is bound to "publish.yml".
+
 on:
   push:
     tags:
@@ -9,40 +14,58 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  # Creates a GitHub Release from the tag. This is what triggers Zenodo's
-  # automatic archiving webhook — Zenodo listens for Release events, not
-  # plain tag pushes.
-  create-release:
+  check-version:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Tag must match the package version
+        run: |
+          version=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match pyproject.toml version ${version}"
+            exit 1
+          fi
+
+  # Lint, test on every supported Python, build, and test the built wheel.
+  # Its "package" job uploads the dist/ artifact published below.
+  ci:
+    needs: check-version
+    uses: ./.github/workflows/ci.yml
+
+  publish-pypi:
+    runs-on: ubuntu-latest
+    needs: ci
+    permissions:
+      id-token: write  # IMPORTANT: mandatory for trusted publishing
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  # The GitHub Release is what triggers Zenodo's archiving webhook (Zenodo
+  # listens for Release events, not plain tag pushes), so it is created only
+  # once the package is on PyPI.
+  create-release:
+    runs-on: ubuntu-latest
+    needs: publish-pypi
+    permissions:
+      contents: write
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-
-  publish-pypi:
-    runs-on: ubuntu-latest
-    needs: create-release
-    permissions:
-      id-token: write  # IMPORTANT: mandatory for trusted publishing
-      contents: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-          python-version: '3.12'
-
-      - name: Build package
-        run: uv build
-
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+          files: dist/*
