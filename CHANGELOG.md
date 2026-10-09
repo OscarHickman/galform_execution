@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.0] - 2026-10-03
+## [0.3.0] - 2026-10-09
 
 ### Added
 - Top-level public API: `from galform_execution import GalformSubmitter, RunFlags, SimulationConfig, ...` (see `galform_execution.__all__`). The package now ships type hints (`py.typed`).
@@ -19,14 +19,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **Requires Python 3.9 or newer.** Python 3.8 reached end of life in 2024 and current setuptools cannot build on it. Tested on Python 3.9–3.14.
 - The bundled `MillGas` simulation now defaults to all 64 of its subvolumes (`nvol_range` `1-64`, previously the subset `1-10`). This matches its per-subvolume `volume` and its 64 tree files, and stops valid `ivols` of 10 or more being rejected. Pass `--nvol 1-10` (or `nvol="1-10"`) for the old default.
+- The bundled `Mill1` and `Mill2` redshift lists are now the full tables (Millennium snapshots 7–63, Millennium-II 0–67), copied from the tree directories. They previously held only 3 and 2 snapshots with rounded redshifts, so any other snapshot, for example in `output_iz_list`, could not be resolved. **The redshift passed to GALFORM changes slightly for runs at those snapshots:** Mill2 iz=40 is now z=1.503637 (was 1.5) and Mill1 iz=33 is now z=1.912633 (was 1.91).
 - The job wrapper sets `OMP_NUM_THREADS`, `MKL_NUM_THREADS` and `OPENBLAS_NUM_THREADS` to 1, because it already runs one GALFORM process per allocated CPU.
 - `load_run_flags_config()` raises `FileNotFoundError` for an explicit path that does not exist and `ValueError` for unknown flag names (keys starting with `_` are comments), instead of silently using defaults.
 - Contradictory CLI options are rejected by the argument parser with exit code 2: `--run-galform`/`--no-galform`, each tree toggle and its `--no-` form, `--output-iz-list`/`--output-z-list`, and `--nvol`/`--nvol-range`/`--ivols`.
 - The console script lives in `galform_execution.cli`; `galform_execution.submit_galform_job.main` still works.
 - `__version__` is read from the installed package metadata, so it can no longer drift from the released version.
 - Package metadata uses an SPDX license expression and lists project URLs, the DOI and supported Python versions.
+- Releases are published to PyPI only after linting and the full test suite pass on Python 3.9–3.14 and the built wheel passes the tests. The GitHub Release (and so the Zenodo DOI) is created only after the PyPI upload succeeds, with the wheel and sdist attached.
+- The example notebooks use the public top-level API (`from galform_execution import ...`).
 
 ### Fixed
+- A SLURM job now fails when any of its subvolumes exits non-zero. The job wrapper used to ignore each subvolume's exit status, so `sacct` reported runs with dead subvolumes as `COMPLETED`. The failing task ids are written to the job's stderr.
+- The default log directory follows `--output-base-dir` / `output_base_dir` (`<output_base_dir>/<output_folder_name>/logs`), as `--help` documented. It previously always used `/cosma5/data/durham/$USER`, so jobs writing outputs elsewhere died at start on nodes that do not mount `/cosma5`.
+- Submitting where `sbatch` is not installed raises an error saying so and pointing at `--dry-run`, instead of a bare `No such file or directory`.
 - `python -m galform_execution` exits with status 1 on errors; it previously always exited 0.
 - `--run-flags-config` no longer drops flags that have no dedicated CLI switch (e.g. `cosmicsed`, `agn`, `sedfit`).
 - Invalid subvolume ranges such as `0`, `0-5` or `10-1` are rejected instead of producing a job that does nothing or runs ivol -1.

@@ -14,7 +14,7 @@ authors:
     given-names: Oscar
     affiliation: "Institute for Computational Cosmology, Durham University"
 version: "0.3.0"
-date-released: "2026-10-03"
+date-released: "2026-10-09"
 doi: 10.5281/zenodo.20797781
 identifiers:
   - type: doi
