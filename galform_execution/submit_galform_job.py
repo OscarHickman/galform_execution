@@ -249,10 +249,16 @@ def _try_mkdir(path: Path) -> None:
         pass
 
 
-def _resolve_log_path(explicit: Optional[str], output_folder_name: str) -> Path:
+def _resolve_log_path(
+    explicit: Optional[str],
+    output_folder_name: str,
+    output_base_dir: Optional[Path] = None,
+) -> Path:
     """Determine the log directory.
 
-    By default this always lives under the COSMA user root.
+    Precedence: *explicit*, then ``$GALFORM_LOG_PATH``, then
+    ``<output_base_dir>/<output_folder_name>/logs`` (the COSMA user root when
+    *output_base_dir* is ``None``).
     """
     if explicit is not None:
         return Path(explicit)
@@ -261,7 +267,8 @@ def _resolve_log_path(explicit: Optional[str], output_folder_name: str) -> Path:
     if env_log:
         return Path(env_log)
 
-    return default_output_root() / output_folder_name / "logs"
+    base = output_base_dir if output_base_dir is not None else default_output_root()
+    return base / output_folder_name / "logs"
 
 
 def _validate_ivols(
@@ -393,15 +400,17 @@ class GalformSubmitter:
                 "mpi",
             ]
 
-        # Log path
-        self.log_path = _resolve_log_path(log_path, output_folder_name)
-
         # Output base directory
         if output_base_dir is not None:
             self.output_base_dir = Path(output_base_dir)
         else:
             self.output_base_dir = default_output_root()
         self.models_dir = self.output_base_dir / output_folder_name / nbody_sim
+
+        # Log path (beside the outputs, so jobs only need that filesystem mounted)
+        self.log_path = _resolve_log_path(
+            log_path, output_folder_name, self.output_base_dir
+        )
 
         # Resolve simulation config
         if nvol is not None and nvol_range is not None:
@@ -1077,6 +1086,11 @@ exit $failed
                 if "Submitted batch job" in output:
                     return output.split()[-1]
                 return None
+            except FileNotFoundError as e:
+                raise RuntimeError(
+                    "sbatch not found on PATH: submit from a SLURM login node, "
+                    "or use dry_run=True (--dry-run) to preview the scripts"
+                ) from e
             except subprocess.CalledProcessError as e:
                 stdout = e.stdout.decode() if e.stdout else ""
                 stderr = e.stderr.decode() if e.stderr else ""

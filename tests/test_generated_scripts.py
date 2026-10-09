@@ -66,11 +66,13 @@ def test_wrapper_runs_every_task_exactly_once_when_workers_stride(
     submitter = GalformSubmitter(
         galform_dir, nbody_sim="L800", iz=100, nvol="1-10", partition="tiny"
     )
-    record = tmp_path / "ran.txt"
+    # One file per task: concurrent tcsh ">>" appends to a shared file are not
+    # atomic and drop lines, which made this test fail ~1 run in 8.
+    record = tmp_path / "ran"
+    record.mkdir()
     task = tmp_path / "task.csh"
     task.write_text(
-        "#!/bin/tcsh -ef\n"
-        f'echo "$SLURM_ARRAY_TASK_ID $OMP_NUM_THREADS" >> {record}\n'
+        "#!/bin/tcsh -ef\n" f'echo "$OMP_NUM_THREADS" > {record}/$SLURM_ARRAY_TASK_ID\n'
     )
     wrapper = tmp_path / "wrapper.sh"
     script = submitter.create_job_script(100, tcsh_path=str(task))
@@ -79,9 +81,9 @@ def test_wrapper_runs_every_task_exactly_once_when_workers_stride(
 
     subprocess.run(["bash", str(wrapper)], check=True, timeout=60)
 
-    rows = [line.split() for line in record.read_text().splitlines()]
-    assert sorted(int(task_id) for task_id, _ in rows) == list(range(1, 11))
-    assert {threads for _, threads in rows} == {"1"}
+    ran = sorted(record.iterdir(), key=lambda p: int(p.name))
+    assert [int(p.name) for p in ran] == list(range(1, 11))
+    assert {p.read_text().strip() for p in ran} == {"1"}
 
 
 @needs_tcsh

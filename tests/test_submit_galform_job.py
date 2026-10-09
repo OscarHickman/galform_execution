@@ -883,6 +883,21 @@ def test_default_log_path_lives_under_cosma_user_root(monkeypatch):
     )
 
 
+def test_default_log_path_follows_output_base_dir(galform_dir, monkeypatch, tmp_path):
+    """Logs must not default to /cosma5 when outputs go elsewhere: nodes that do
+    not mount /cosma5 cannot open the SLURM -o log and the job dies at start."""
+    monkeypatch.delenv("GALFORM_LOG_PATH", raising=False)
+    base = tmp_path / "cosma8_like"
+    submitter = GalformSubmitter(
+        galform_dir=galform_dir,
+        nbody_sim="L800",
+        output_base_dir=str(base),
+        output_folder_name="Proj",
+    )
+    assert submitter.log_path == base / "Proj" / "logs"
+    assert f"#SBATCH -o {base}/Proj/logs/" in submitter.create_job_script(100)
+
+
 def test_log_path_env_var_and_explicit_argument(monkeypatch, tmp_path):
     monkeypatch.setenv("GALFORM_LOG_PATH", str(tmp_path / "env"))
     assert _resolve_log_path(None, "Proj") == tmp_path / "env"
@@ -1239,16 +1254,39 @@ def test_sbatch_output_without_job_id_returns_none(galform_dir, log_dir):
         assert submitter.submit_job(271) is None
 
 
+def test_missing_sbatch_gives_actionable_error(galform_dir, log_dir):
+    """Off-cluster there is no sbatch; say so instead of a bare ENOENT."""
+    submitter = GalformSubmitter(
+        galform_dir=galform_dir,
+        nbody_sim="L800",
+        iz=271,
+        nvol="1-2",
+        log_path=str(log_dir),
+    )
+    with patch(
+        "galform_execution.submit_galform_job.subprocess.run",
+        side_effect=FileNotFoundError(2, "No such file or directory", "sbatch"),
+    ):
+        with pytest.raises(RuntimeError, match="sbatch not found.*dry.run"):
+            submitter.submit_job(271)
+
+
 @pytest.mark.skipif(shutil.which("tcsh") is None, reason="needs tcsh")
 @pytest.mark.parametrize("fail_task, expected_rc", [(None, 0), (2, 1)])
-def test_job_wrapper_reports_dead_ivols_to_slurm(galform_dir, tmp_path, fail_task, expected_rc):
+def test_job_wrapper_reports_dead_ivols_to_slurm(
+    galform_dir, tmp_path, fail_task, expected_rc
+):
     """A dead ivol must fail the job. The wrapper used to ignore each ivol's exit status, so
     sacct said COMPLETED for runs whose ivols had died (2026-10-03: 24 of 80 runs)."""
     csh = tmp_path / "g.csh"
     csh.write_text(f"if ( $SLURM_ARRAY_TASK_ID == {fail_task or 0} ) exit 3\nexit 0\n")
-    submitter = GalformSubmitter(galform_dir=galform_dir, nbody_sim="L800", iz=100, nvol="1-3")
+    submitter = GalformSubmitter(
+        galform_dir=galform_dir, nbody_sim="L800", iz=100, nvol="1-3"
+    )
     script = submitter.create_job_script(iz=100, tcsh_path=str(csh))
-    r = subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=60)
+    r = subprocess.run(
+        ["bash", "-c", script], capture_output=True, text=True, timeout=60
+    )
     assert r.returncode == expected_rc
     assert ("ivol task 2 exited with status 3" in r.stderr) == (fail_task is not None)
 

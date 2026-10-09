@@ -101,6 +101,16 @@ def test_bundled_redshift_lists_are_ordered(filename):
     assert redshifts[0] > redshifts[-1]
 
 
+@pytest.mark.parametrize(
+    "filename", sorted(p.name for p in _REDSHIFT_LISTS_DIR.iterdir())
+)
+def test_bundled_redshift_lists_have_no_gaps(filename):
+    """Full tables only: Mill1/Mill2 once shipped 2-3 rounded entries, so any
+    other snapshot (e.g. as an output_iz_list entry) could not be resolved."""
+    snapshots = sorted(_bundled_redshift_list(filename))
+    assert snapshots == list(range(snapshots[0], snapshots[-1] + 1))
+
+
 def test_every_bundled_redshift_list_is_used():
     used = {SIMULATION_CONFIGS[n].snapshot_file for n in BUNDLED_SIMS}
     assert used == {p.name for p in _REDSHIFT_LISTS_DIR.iterdir()}

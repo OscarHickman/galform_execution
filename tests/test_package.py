@@ -97,7 +97,10 @@ def test_citation_cff_matches_version():
     assert f'version: "{_pyproject_version()}"' in text
 
 
-@in_repo
+@pytest.mark.skipif(
+    not (REPO_ROOT / "conda" / "meta.yaml").is_file(),
+    reason="the conda recipe is not shipped in the sdist",
+)
 def test_conda_recipe_matches_version():
     text = (REPO_ROOT / "conda" / "meta.yaml").read_text()
     assert f'{{% set version = "{_pyproject_version()}" %}}' in text
