@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - Unreleased
+
+### Added
+- `GalformSubmitter(cpus_per_task=...)` and CLI `--cpus-per-task` set the CPUs (parallel subvolumes) per job; the value is capped at the subvolume count.
+- `GalformSubmitter(exclude=..., dependency=..., extra_sbatch_args=[...])` and CLI `--exclude`, `--dependency`, `--sbatch-arg=OPTION` (repeatable) add `#SBATCH` lines to the job wrapper, so they show in `scontrol show job`. `dependency` also adds `--kill-on-invalid-dep=yes`. Options the submitter sets itself (partition, account, time, CPUs, memory including `--mem`, nodes, `--exclusive`, job name, output, array) are rejected in every spelling (`-pX`, `-p X`, `--part=X`), as are options that repeat `exclude`/`dependency`/`mail_user` or each other. `exclude` and `dependency` may not contain newlines.
+- Public `GalformSubmitter.sbatch_with_retry()`. The `_sbatch_with_retry` hook still exists and `submit_job` still calls it, so subclasses and patches that override it keep working.
+- `GalformSubmitter.tcsh_script_path(iz)`: where `submit_job` writes the snapshot's tcsh script (the hash of the unmodified `create_tcsh_script(iz)` unless the final text is passed).
+- `GalformSubmitter.write_tcsh_script(iz, text) -> Path`, for callers that edit the tcsh script before submitting their own wrapper: names the file by the hash of the final text and writes it once, atomically.
+- CLI `--stellar-pop-dir` and the `$GALFORM_STELLAR_POP_DIR` environment variable; `default_stellar_pop_dir()`. The variable applies on every partition: a warning is raised when the resolved `stellar_pop_dir` is under `/cosma8` and a listed partition is not known to mount `/cosma8` (`cosma5` and `cosma7` nodes do not), since GALFORM would fail there at run time.
+- `config/partition_configs.json`: `hardwarelab-cpu` (112 cores, gi001), `hardwarelab-gpu` (64, gn004), `cosma8-highram` and `cosma8-highram-pauper` (128); per-partition `max_time_h` (from `scontrol show partition`, 2026-10-21; e.g. 6 h for `hardwarelab-*` and `gracehopper`, 2 h for `mi300a`, 24 h for the `-pauper` partitions, 72 h elsewhere); and `nodes` (cores per node) for the partitions that mix node sizes (`cosma7-shm`, `cosma7-shm2`, `cosma8-shm*`, `cosma8-ska*`, `hardwarelab-*`). `PartitionConfig` gained the optional `max_time_h` and `nodes` fields; `_`-prefixed keys in the file are comments.
+
+### Changed
+- **The tcsh script now has a content-addressed name**, `<log_path>/<sim>/<model>_iz<iz>_<hash>.csh` (hash = first 12 hex digits of the script's SHA-256), instead of `<model>_iz<iz>.csh`. An existing file of that name is never rewritten, and a new one is written atomically through a uniquely named temporary file (safe across threads and processes). The old name is no longer written or touched, so jobs queued by earlier releases keep reading their own script. Scripts that looked for `<model>_iz<iz>.csh` after `submit_job` should use `tcsh_script_path(iz)`.
+- **`partition` may be a comma-separated list.** The job asks for `min(subvolumes, smallest usable node among the listed partitions)` CPUs, where nodes named in `exclude` do not count, so a list can ask for fewer CPUs than before. A `UserWarning` names the CPU count and the `cpus_per_task` override whenever this is below `min(subvolumes, largest listed node)`. For example, `cosma8-shm,cosma8-shm2,cosma8-shm3,cosma7-shm,dine2` with 64 subvolumes asks for 56 (mad01) and warns; with `exclude="mad01"` it asks for 64. Spaces and empty entries in the list are dropped.
+- **A partition missing from `config/partition_configs.json` is an error unless `cpus_per_task` is given.** It used to request one CPU per subvolume. `create_tcsh_script` is unaffected. An explicit `cpus_per_task` above the smallest usable node warns.
+- **A `walltime` above any listed partition's `max_time_h` raises `ValueError`** in `GalformSubmitter(...)`, instead of `sbatch` rejecting the whole job. Unrecognised walltime formats and partitions without `max_time_h` are not checked.
+- The default `stellar_pop_dir` is unchanged from 0.3.0 (`/cosma5/data/jch/Galform/Data/stellar_pop/`) unless `$GALFORM_STELLAR_POP_DIR` is set.
+
+### Fixed
+- A second submission with the same simulation, model and snapshot (but different overrides, subvolumes, run flags or `stellar_pop_dir`) no longer replaces the script that an earlier queued or running job re-reads for each subvolume.
+- A partition list, or a partition not in the table, no longer produces `--cpus-per-task=<number of subvolumes>` (e.g. 1024 for L800), which `sbatch` rejects.
+
 ## [0.3.0] - 2026-10-09
 
 ### Added

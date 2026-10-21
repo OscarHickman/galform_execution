@@ -666,7 +666,8 @@ def test_submit_job_writes_tcsh_and_submits():
             log_path=str(log_path),
             submit_retry_delay_s=0.0,
         )
-        expected_tcsh = log_path / "L800" / "gp14_iz100.csh"
+        expected_tcsh = submitter.tcsh_script_path(100)
+        assert expected_tcsh.parent == log_path / "L800"
 
         calls = {}
 
@@ -1225,8 +1226,9 @@ def test_submit_all_jobs_returns_one_job_id_per_snapshot(galform_dir, log_dir):
         "galform_execution.submit_galform_job.subprocess.run", side_effect=results
     ):
         assert submitter.submit_all_jobs() == ["1", "2"]
-    assert (log_dir / "L800" / "gp14_iz271.csh").exists()
-    assert (log_dir / "L800" / "gp14_iz207.csh").exists()
+    assert submitter.tcsh_script_path(271).exists()
+    assert submitter.tcsh_script_path(207).exists()
+    assert len(list((log_dir / "L800").glob("gp14_iz*.csh"))) == 2
 
 
 def test_submit_all_jobs_dry_run_submits_nothing(galform_dir, capsys):

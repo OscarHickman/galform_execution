@@ -105,7 +105,18 @@ or, from Python, `GalformSubmitter(..., sim_config=SimulationConfig(...), model_
 | GALFORM source tree | `/cosma/apps/durham/$USER/galform` | positional `galform_dir` |
 | Outputs | `/cosma5/data/durham/$USER/<output-folder-name>/<sim>/<model>/iz<iz>/ivol<n>` | `--output-base-dir`, `--output-folder-name` |
 | SLURM logs and generated scripts | `<output-base-dir>/<output-folder-name>/logs` | `--log-path` or `$GALFORM_LOG_PATH` |
-| Partition / account | `cosma5` / `durham` | `--partition`, `--account` |
+| Partition / account | `cosma5` / `durham` | `--partition` (one name or a comma-separated list), `--account` |
+| CPUs per job | one per subvolume, capped at the smallest node among the listed partitions (nodes named in `--exclude` don't count; a warning says when this leaves workers running several subvolumes) | `--cpus-per-task` (required for partitions not in `config/partition_configs.json`) |
+| Walltime | `72:00:00`; above any listed partition's MaxTime (e.g. 6 h on `hardwarelab-*`) is an error | `--walltime` |
+| Stellar population tables | `/cosma5/data/jch/Galform/Data/stellar_pop/` | `--stellar-pop-dir` or `$GALFORM_STELLAR_POP_DIR` (applies on every partition: a `/cosma8` path on `cosma5`/`cosma7` fails at run time, and the submitter warns) |
+| Extra `sbatch` options | none | `--exclude`, `--dependency` (adds `--kill-on-invalid-dep=yes`), `--sbatch-arg=OPTION` (repeatable) |
+
+Each snapshot's GALFORM script is written to
+`<log-path>/<sim>/<model>_iz<iz>_<hash>.csh`, where `<hash>` is taken from the
+script's content, so a later submission never changes the script an earlier,
+still-queued job will run. Code that edits the script before submitting its
+own wrapper should write it with `GalformSubmitter.write_tcsh_script(iz, text)`,
+which names the file by the final text.
 
 ## Development
 

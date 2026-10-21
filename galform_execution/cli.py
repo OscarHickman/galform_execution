@@ -150,12 +150,28 @@ def _add_output_arguments(parser: argparse.ArgumentParser) -> None:
         "--galform-exe",
         help="Path to a custom GALFORM executable (overrides build/galform2)",
     )
+    group.add_argument(
+        "--stellar-pop-dir",
+        metavar="DIR",
+        help="GALFORM stellar population (SSP) directory (default: "
+        "$GALFORM_STELLAR_POP_DIR, else /cosma5/data/jch/Galform/Data/stellar_pop/)",
+    )
 
 
 def _add_slurm_arguments(parser: argparse.ArgumentParser) -> None:
     group = parser.add_argument_group("SLURM resources")
     group.add_argument(
-        "--partition", default="cosma5", help="SLURM partition (default: cosma5)"
+        "--partition",
+        default="cosma5",
+        help="SLURM partition, or a comma-separated list (default: cosma5)",
+    )
+    group.add_argument(
+        "--cpus-per-task",
+        type=int,
+        metavar="N",
+        help="CPUs (parallel subvolumes) per job (default: the smallest node "
+        "among the listed partitions; required for partitions not in "
+        "config/partition_configs.json)",
     )
     group.add_argument(
         "--account", default="durham", help="SLURM account (default: durham)"
@@ -169,6 +185,22 @@ def _add_slurm_arguments(parser: argparse.ArgumentParser) -> None:
         default=4000,
         metavar="MB",
         help="Memory per CPU in MB (default: 4000)",
+    )
+    group.add_argument(
+        "--exclude", metavar="NODES", help="Nodes to avoid, e.g. mad01,mad05"
+    )
+    group.add_argument(
+        "--dependency",
+        metavar="SPEC",
+        help="SLURM dependency, e.g. afterok:12345 (adds --kill-on-invalid-dep=yes)",
+    )
+    group.add_argument(
+        "--sbatch-arg",
+        action="append",
+        default=[],
+        metavar="OPTION",
+        help="Extra #SBATCH option for the job (repeatable); "
+        "write it with '=', e.g. --sbatch-arg=--qos=short",
     )
     group.add_argument("--mail-user", help="Email address for SLURM job notifications")
     group.add_argument(
@@ -363,6 +395,11 @@ def _run(args: argparse.Namespace) -> int:
         output_redshifts=args.output_z_list,
         output_iz_list=args.output_iz_list,
         galform_exe=args.galform_exe,
+        stellar_pop_dir=args.stellar_pop_dir,
+        cpus_per_task=args.cpus_per_task,
+        exclude=args.exclude,
+        dependency=args.dependency,
+        extra_sbatch_args=args.sbatch_arg,
         ivols=args.ivols,
         sim_config=simulations.get(args.nbody_sim),
         model_config=models.get(args.model),

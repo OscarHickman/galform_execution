@@ -14,6 +14,8 @@ def _isolate_log_path(tmp_path, monkeypatch):
     directory as a side effect of generating a script.
     """
     monkeypatch.setenv("GALFORM_LOG_PATH", str(tmp_path / "isolated_logs"))
+    # A user's own default must not leak into tests of the built-in defaults.
+    monkeypatch.delenv("GALFORM_STELLAR_POP_DIR", raising=False)
 
 
 @pytest.fixture

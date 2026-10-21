@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 """Submit GALFORM N-body tree runs to SLURM batch queue on COSMA."""
 
+import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
+import tempfile
 import time
+import warnings
 from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 
 @dataclass
@@ -65,9 +69,17 @@ class ModelConfig:
 
 @dataclass
 class PartitionConfig:
-    """COSMA SLURM partition hardware limits."""
+    """COSMA SLURM partition hardware limits.
+
+    ``cpus_per_node`` is the core count of the partition's smallest node.
+    ``nodes`` maps node name to cores for partitions that mix node sizes, so an
+    ``exclude`` that removes the small node lets the job ask for more CPUs.
+    ``max_time_h`` is the partition's MaxTime in hours (``None``: not checked).
+    """
 
     cpus_per_node: int
+    max_time_h: Optional[float] = None
+    nodes: Dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -103,6 +115,65 @@ _TRANSIENT_SUBMIT_ERROR_MARKERS = (
     "slurm temporarily unable to accept job",
     "resource temporarily unavailable",
 )
+
+# Stellar population (SSP) tables read by GALFORM: jch's copy, unless the
+# caller passes stellar_pop_dir or sets $GALFORM_STELLAR_POP_DIR.
+COSMA5_STELLAR_POP_DIR = "/cosma5/data/jch/Galform/Data/stellar_pop/"
+
+# Partitions whose every node mounts /cosma8 (COSMA mount probes, 2026-09/10).
+# cosma5 and cosma7 nodes do not; partitions not listed here are unverified.
+# Used only to warn about a /cosma8 stellar_pop_dir on other partitions.
+_PARTITIONS_MOUNTING_COSMA8 = frozenset(
+    {
+        "cosma8",
+        "cosma8-pauper",
+        "cosma8-serial",
+        "cosma8-rome",
+        "cosma8-rome-pauper",
+        "cosma8-milan",
+        "cosma8-milan-pauper",
+        "cosma8-shm",
+        "cosma8-shm2",
+        "cosma8-shm3",
+        "cosma8-highram",
+        "cosma8-highram-pauper",
+        "cosma7-shm",
+        "dine2",
+        "bluefield1",
+        "hardwarelab-cpu",
+        "hardwarelab-gpu",
+        "gracehopper",
+        "mi300a",
+    }
+)
+
+# sbatch options the submitter sets itself, mapped to the argument that controls
+# them.  Passing them again through extra_sbatch_args would be ambiguous.  Short
+# options are matched attached ("-pX") or spaced ("-p X"); long ones also by an
+# abbreviation sbatch would accept ("--part=X").
+_MANAGED_SBATCH_OPTIONS = {
+    "-p": "partition",
+    "--partition": "partition",
+    "-A": "account",
+    "--account": "account",
+    "-t": "walltime",
+    "--time": "walltime",
+    "-J": "the job name",
+    "--job-name": "the job name",
+    "-o": "log_path",
+    "--output": "log_path",
+    "-c": "cpus_per_task",
+    "--cpus-per-task": "cpus_per_task",
+    "-n": "the packed single-task layout",
+    "--ntasks": "the packed single-task layout",
+    "--mem-per-cpu": "mem_per_cpu",
+    "--mem": "mem_per_cpu (submit_job's per-CPU memory)",
+    "-N": "the packed single-node layout",
+    "--nodes": "the packed single-node layout",
+    "--exclusive": "cpus_per_task (the packed layout shares nodes, not exclusive)",
+    "-a": "the packed single-slot layout (no array)",
+    "--array": "the packed single-slot layout (no array)",
+}
 
 
 def _load_json(path: Path) -> Dict[str, Any]:
@@ -184,10 +255,14 @@ def load_model_configs(
 def load_partition_configs(
     config_path: Optional[str] = None,
 ) -> Dict[str, PartitionConfig]:
-    """Load COSMA partition hardware limits from JSON."""
+    """Load COSMA partition hardware limits from JSON (``_``-prefixed keys are comments)."""
     path = Path(config_path) if config_path else _PARTITION_CONFIG_PATH
     raw = _load_json(path)
-    return {name: PartitionConfig(**cfg) for name, cfg in raw.items()}
+    return {
+        name: PartitionConfig(**cfg)
+        for name, cfg in raw.items()
+        if not name.startswith("_")
+    }
 
 
 DUST_CONFIGS = load_dust_configs()
@@ -230,6 +305,186 @@ def default_galform_dir() -> Path:
     """Return the default GALFORM source directory, ``/cosma/apps/durham/$USER/galform``."""
     user = os.environ.get("USER", Path.home().name)
     return Path(f"/cosma/apps/durham/{user}/galform")
+
+
+def _write_once(path: Path, text: str) -> None:
+    """Write *text* to *path* atomically, leaving an identical existing file alone.
+
+    A queued or running job may be reading *path*: an unchanged file is never
+    rewritten, and a new one appears complete or not at all.  Each call writes
+    its own uniquely named temporary file, so concurrent writers (threads or
+    processes) cannot interfere; the temporary file never outlives the call.
+    """
+    if path.is_file() and path.read_text() == text:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        "w", dir=path.parent, prefix=f".{path.name}.", suffix=".tmp", delete=False
+    ) as fh:
+        tmp = Path(fh.name)
+    try:
+        tmp.write_text(text)
+        os.chmod(tmp, 0o644)  # NamedTemporaryFile creates 0600
+        os.replace(tmp, path)
+    finally:
+        if tmp.exists():
+            tmp.unlink()
+
+
+def _split_partitions(partition: str) -> List[str]:
+    """Names in a comma-separated SLURM partition list, e.g. ``"cosma8-shm,dine2"``."""
+    return [p.strip() for p in str(partition).split(",") if p.strip()]
+
+
+def _expand_hostlist(spec: Optional[str]) -> Set[str]:
+    """Node names in a SLURM host list such as ``"mad[01-03,05],gc001"``."""
+    nodes: Set[str] = set()
+    if not spec:
+        return nodes
+    for prefix, ranges, plain in re.findall(
+        r"([^,\[\]]+)\[([^\]]*)\]|([^,\[\]]+)", spec
+    ):
+        if plain:
+            if plain.strip():
+                nodes.add(plain.strip())
+            continue
+        for part in ranges.split(","):
+            lo, _, hi = part.strip().partition("-")
+            if not hi:
+                nodes.add(f"{prefix.strip()}{lo}")
+                continue
+            nodes.update(
+                f"{prefix.strip()}{i:0{len(lo)}d}" for i in range(int(lo), int(hi) + 1)
+            )
+    return nodes
+
+
+def _walltime_hours(walltime: str) -> Optional[float]:
+    """Hours in a SLURM time limit (``M``, ``M:S``, ``H:M:S``, ``D-H[:M[:S]]``).
+
+    ``None`` for a format this does not recognise (e.g. ``UNLIMITED``); sbatch
+    judges those itself.
+    """
+    m = re.fullmatch(r"\s*(?:(\d+)-)?(\d+)(?::(\d+))?(?::(\d+))?\s*", str(walltime))
+    if not m:
+        return None
+    days, a, b, c = m.groups()
+    if days is not None:  # D-H, D-H:M, D-H:M:S
+        h, mins, secs = int(a), int(b or 0), int(c or 0)
+        return int(days) * 24 + h + mins / 60 + secs / 3600
+    if c is not None:  # H:M:S
+        return int(a) + int(b) / 60 + int(c) / 3600
+    if b is not None:  # M:S
+        return int(a) / 60 + int(b) / 3600
+    return int(a) / 60  # M
+
+
+def default_stellar_pop_dir() -> str:
+    """Return the default GALFORM ``stellar_pop_dir``.
+
+    ``$GALFORM_STELLAR_POP_DIR`` when set, else jch's ``/cosma5`` copy.  The
+    environment variable applies whatever the partition: a ``/cosma8`` path
+    fails at run time on nodes that do not mount ``/cosma8`` (e.g. ``cosma5``),
+    so ``GalformSubmitter`` warns about that combination.
+    """
+    return os.environ.get("GALFORM_STELLAR_POP_DIR") or COSMA5_STELLAR_POP_DIR
+
+
+def _check_directive_value(name: str, value: Optional[str]) -> Optional[str]:
+    """Reject values that would break out of their ``#SBATCH`` line."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise TypeError(f"{name} must be a string, got {type(value).__name__}")
+    if "\n" in value or "\r" in value:
+        raise ValueError(f"{name} contains a newline: {value!r}")
+    return value
+
+
+def _sbatch_option_name(arg: str) -> str:
+    """``"--mem=8G"``/``"--mem 8G"`` -> ``"--mem"``; ``"-pX"``/``"-p X"`` -> ``"-p"``."""
+    if arg.startswith("--"):
+        return arg.split("=", 1)[0].split()[0]
+    return arg[:2]
+
+
+def _forbidden_option(name: str, forbidden: Dict[str, str]) -> Optional[str]:
+    """The forbidden option *name* stands for, exactly or as a long abbreviation."""
+    if name in forbidden:
+        return name
+    if name.startswith("--") and len(name) >= 4:
+        for option in forbidden:
+            if option.startswith(name):
+                return option
+    return None
+
+
+def _validate_extra_sbatch_args(
+    args: Optional[Sequence[str]],
+    exclude: Optional[str] = None,
+    dependency: Optional[str] = None,
+    mail_user: Optional[str] = None,
+) -> List[str]:
+    """Check extra ``#SBATCH`` options.
+
+    One option per string; none the submitter sets itself (in any spelling);
+    none that repeats a keyword argument (``exclude``, ``dependency``,
+    ``mail_user``) or another extra option, since sbatch would silently keep
+    only the last one.
+    """
+    if args is None:
+        return []
+    if isinstance(args, str) or not all(isinstance(a, str) for a in args):
+        raise TypeError(
+            "extra_sbatch_args must be a list of strings, e.g. ['--qos=short']"
+        )
+    already = {}
+    if exclude:
+        already.update({"--exclude": "exclude", "-x": "exclude"})
+    if dependency:
+        already.update(
+            {
+                "--dependency": "dependency",
+                "-d": "dependency",
+                "--kill-on-invalid-dep": "dependency (it adds --kill-on-invalid-dep=yes)",
+            }
+        )
+    if mail_user:
+        already.update({"--mail-user": "mail_user", "--mail-type": "mail_type"})
+    aliases = {"-x": "--exclude", "-d": "--dependency"}
+    out: List[str] = []
+    seen: Set[str] = set()
+    for arg in args:
+        arg = arg.strip()
+        if "\n" in arg or "\r" in arg:
+            raise ValueError(f"extra sbatch option contains a newline: {arg!r}")
+        if not arg.startswith("-"):
+            raise ValueError(
+                f"extra sbatch option must start with '-', got {arg!r} "
+                "(e.g. '--qos=short')"
+            )
+        name = _sbatch_option_name(arg)
+        managed = _forbidden_option(name, _MANAGED_SBATCH_OPTIONS)
+        if managed:
+            raise ValueError(
+                f"extra sbatch option {arg!r} is set by GalformSubmitter; "
+                f"use {_MANAGED_SBATCH_OPTIONS[managed]} instead"
+            )
+        duplicate = _forbidden_option(name, already)
+        if duplicate:
+            raise ValueError(
+                f"extra sbatch option {arg!r} is already set by the "
+                f"{already[duplicate]} argument"
+            )
+        key = aliases.get(name, name)
+        if key in seen:
+            raise ValueError(
+                f"extra sbatch option {key} given more than once; sbatch would "
+                "keep only the last"
+            )
+        seen.add(key)
+        out.append(arg)
+    return out
 
 
 # Private names kept for scripts and notebooks written against older releases.
@@ -308,7 +563,8 @@ class GalformSubmitter:
     """Orchestrates GALFORM N-body runs submitted to SLURM as single-slot packed jobs.
 
     Each snapshot is submitted as one SLURM job requesting
-    ``--cpus-per-task=min(nvol_count, partition_cpus_per_node)`` CPUs.  A bash
+    ``--cpus-per-task=min(nvol_count, cpus)`` CPUs, where ``cpus`` is
+    ``cpus_per_task`` or the smallest node among the listed partitions.  A bash
     wrapper forks one worker per CPU; each worker iterates over a strided subset
     of subvolume IDs so that all ``nvol_count`` subvolumes are processed within
     that single slot.  No ``--array`` flag is used.
@@ -330,7 +586,7 @@ class GalformSubmitter:
         iz_list: Optional[List[int]] = None,
         nvol_range: Optional[str] = None,
         run_flags: Optional[RunFlags] = None,
-        stellar_pop_dir: str = "/cosma5/data/jch/Galform/Data/stellar_pop/",
+        stellar_pop_dir: Optional[str] = None,
         modules: Optional[List[str]] = None,
         input_overrides: Optional[Dict[str, str]] = None,
         output_redshifts: Optional[List[float]] = None,
@@ -344,6 +600,10 @@ class GalformSubmitter:
         ivols: Optional[Sequence[int]] = None,
         sim_config: Optional[SimulationConfig] = None,
         model_config: Optional[ModelConfig] = None,
+        cpus_per_task: Optional[int] = None,
+        exclude: Optional[str] = None,
+        dependency: Optional[str] = None,
+        extra_sbatch_args: Optional[Sequence[str]] = None,
     ) -> None:
         """Configure a submitter.
 
@@ -354,16 +614,50 @@ class GalformSubmitter:
         ``sim_config`` / ``model_config``: use these definitions instead of looking
         ``nbody_sim`` / ``model`` up in ``SIMULATION_CONFIGS`` / ``MODEL_CONFIGS``,
         e.g. for a simulation or model that is not bundled with the package.
+
+        ``stellar_pop_dir``: GALFORM's SSP directory.  Default
+        :func:`default_stellar_pop_dir`: ``$GALFORM_STELLAR_POP_DIR``, else jch's
+        ``/cosma5`` copy.  A ``/cosma8`` path on a partition not known to mount
+        ``/cosma8`` warns.
+
+        ``partition`` may be a comma-separated list.  The job then asks for the
+        CPUs of the smallest node among them (``PARTITION_CONFIGS``), not
+        counting nodes named in ``exclude``; a warning says so when that leaves
+        workers running several subvolumes in turn.  ``cpus_per_task``
+        overrides it (capped at the subvolume count), and is required when a
+        listed partition is not in ``PARTITION_CONFIGS``.  A ``walltime``
+        above any listed partition's MaxTime raises ``ValueError``.
+
+        ``exclude``, ``dependency`` and ``extra_sbatch_args`` add ``#SBATCH``
+        directives to the job wrapper: ``--exclude=<exclude>``;
+        ``--dependency=<dependency>`` with ``--kill-on-invalid-dep=yes``; and each
+        string of ``extra_sbatch_args`` verbatim (e.g. ``["--qos=short"]``).
         """
         self.galform_dir = Path(galform_dir)
         self.nbody_sim = nbody_sim
         self.model = model
         self.iz = iz
         self.nvol = nvol
-        self.partition = partition
+        # "a, b," -> "a,b": sbatch would split a directive at the spaces.
+        self.partition = ",".join(_split_partitions(partition)) or partition
         self.account = account
         self.walltime = walltime
-        self.stellar_pop_dir = stellar_pop_dir
+        self._stellar_pop_from_env = stellar_pop_dir is None and bool(
+            os.environ.get("GALFORM_STELLAR_POP_DIR")
+        )
+        self.stellar_pop_dir = (
+            stellar_pop_dir
+            if stellar_pop_dir is not None
+            else default_stellar_pop_dir()
+        )
+        if cpus_per_task is not None and int(cpus_per_task) < 1:
+            raise ValueError(f"cpus_per_task must be at least 1, got {cpus_per_task}")
+        self.cpus_per_task = int(cpus_per_task) if cpus_per_task is not None else None
+        self.exclude = _check_directive_value("exclude", exclude)
+        self.dependency = _check_directive_value("dependency", dependency)
+        self.extra_sbatch_args = _validate_extra_sbatch_args(
+            extra_sbatch_args, self.exclude, self.dependency, mail_user
+        )
         self.galform_exe_override = Path(galform_exe) if galform_exe else None
         self.run_flags = run_flags if run_flags is not None else load_run_flags_config()
         self.output_folder_name = output_folder_name
@@ -464,6 +758,9 @@ class GalformSubmitter:
         exe_path = self.galform_exe_override or self.galform_dir / "build" / "galform2"
         if not exe_path.exists():
             raise FileNotFoundError(f"GALFORM executable not found: {exe_path}")
+        self._check_walltime()
+        self._check_cpus()
+        self._check_stellar_pop_mount()
 
     @staticmethod
     def _bool_to_csh(value: bool) -> str:
@@ -985,43 +1282,216 @@ set SAMPLE_GALS_EXE    = ${{build_dir}}/sample_gals
     # Alias kept for code written against releases where this was private.
     _create_tcsh_script = create_tcsh_script
 
+    def tcsh_script_path(self, iz: int, tcsh_script: Optional[str] = None) -> Path:
+        """Path the tcsh script for snapshot *iz* is written to by ``submit_job``.
+
+        ``<log_path>/<nbody_sim>/<model>_iz<iz>_<hash>.csh``, where ``<hash>`` is
+        the first 12 hex digits of the script's SHA-256.  The bash wrapper runs
+        this file once per subvolume, so it must not change while the job is
+        queued or running: two submissions share a file only when their scripts
+        are identical.
+
+        Without *tcsh_script* the hash is of the unmodified
+        ``create_tcsh_script(iz)``.  A caller that edits the script before
+        writing it must pass the final text here, or simply call
+        :meth:`write_tcsh_script`, which returns the right path.
+        """
+        if tcsh_script is None:
+            tcsh_script = self.create_tcsh_script(iz)
+        digest = hashlib.sha256(tcsh_script.encode()).hexdigest()[:12]
+        return self.log_path / self.nbody_sim / f"{self.model}_iz{iz}_{digest}.csh"
+
+    def write_tcsh_script(self, iz: int, tcsh_script: str) -> Path:
+        """Write *tcsh_script* (the final text) for snapshot *iz*; return its path.
+
+        For callers that modify ``create_tcsh_script(iz)`` before submitting
+        their own wrapper.  The name hashes *tcsh_script* itself (see
+        :meth:`tcsh_script_path`); an existing file of that name is never
+        rewritten and a new one is written atomically, so jobs already queued
+        keep running the script they were submitted with.  Files written under
+        other names (including ``<model>_iz<iz>.csh`` from releases before
+        0.4.0) are never touched.
+        """
+        path = self.tcsh_script_path(iz, tcsh_script)
+        _write_once(path, tcsh_script)
+        return path
+
+    def _node_sizes(self) -> Optional[Dict[str, List[int]]]:
+        """Cores of each listed partition's usable nodes, after ``exclude``.
+
+        ``None`` when a listed partition is not in ``PARTITION_CONFIGS``.  A
+        partition whose every node is excluded maps to an empty list.
+        """
+        excluded = _expand_hostlist(self.exclude)
+        sizes: Dict[str, List[int]] = {}
+        for name in _split_partitions(self.partition):
+            cfg = PARTITION_CONFIGS.get(name)
+            if cfg is None:
+                return None
+            if cfg.nodes:
+                sizes[name] = [c for n, c in cfg.nodes.items() if n not in excluded]
+            else:
+                sizes[name] = [cfg.cpus_per_node]
+        return sizes
+
+    @staticmethod
+    def _smallest_node(sizes: Dict[str, List[int]]) -> Optional[Tuple[int, str]]:
+        """(cores, partition) of the smallest usable node, or ``None`` if none."""
+        usable = [(min(c), p) for p, c in sizes.items() if c]
+        return min(usable) if usable else None
+
+    def _effective_cpus(self) -> int:
+        """CPUs (= workers) for one packed job, at most one per subvolume."""
+        if self.cpus_per_task is not None:
+            return min(self.nvol_count, self.cpus_per_task)
+        sizes = self._node_sizes()
+        if sizes is None or not sizes:
+            unknown = [
+                p
+                for p in _split_partitions(self.partition)
+                if p not in PARTITION_CONFIGS
+            ]
+            raise ValueError(
+                f"Unknown partition(s) {', '.join(unknown) or repr(self.partition)}: "
+                "cannot size the job. Pass cpus_per_task=N (CLI --cpus-per-task N) "
+                "with N at most the smallest node's core count, or add the "
+                "partition to config/partition_configs.json."
+            )
+        smallest = self._smallest_node(sizes)
+        if smallest is None:
+            raise ValueError(
+                f"exclude={self.exclude!r} excludes every node of partition(s) "
+                f"{self.partition}: nothing left to run on."
+            )
+        return min(self.nvol_count, smallest[0])
+
+    def _check_walltime(self) -> None:
+        """Raise if ``walltime`` exceeds the MaxTime of any listed partition."""
+        hours = _walltime_hours(self.walltime)
+        if hours is None:
+            return
+        too_long = [
+            f"{p} ({PARTITION_CONFIGS[p].max_time_h:g} h)"
+            for p in _split_partitions(self.partition)
+            if p in PARTITION_CONFIGS
+            and PARTITION_CONFIGS[p].max_time_h is not None
+            and hours > float(PARTITION_CONFIGS[p].max_time_h)  # type: ignore[arg-type]
+        ]
+        if too_long:
+            raise ValueError(
+                f"The MaxTime of {', '.join(too_long)} is below walltime "
+                f"{self.walltime}; sbatch would reject the whole job. Shorten "
+                "walltime or drop those partitions."
+            )
+
+    def _check_cpus(self) -> None:
+        """Warn when the CPU request does not fit the listed nodes well."""
+        sizes = self._node_sizes()
+        if not sizes:
+            return
+        smallest = self._smallest_node(sizes)
+        if smallest is None:
+            return  # _effective_cpus raises when a script is generated
+        small_cores, small_part = smallest
+        if self.cpus_per_task is not None:
+            cpus = min(self.nvol_count, self.cpus_per_task)
+            if cpus > small_cores:
+                excluded = _expand_hostlist(self.exclude)
+                nodes = PARTITION_CONFIGS[small_part].nodes
+                which = [
+                    n
+                    for n, c in nodes.items()
+                    if c == small_cores and n not in excluded
+                ] or [small_part]
+                warnings.warn(
+                    f"cpus_per_task={cpus} exceeds the smallest node in partition "
+                    f"list {self.partition}: {', '.join(which)} ({small_cores} cores, "
+                    f"{small_part}). sbatch may reject the job; exclude that node or "
+                    "drop that partition.",
+                    UserWarning,
+                    stacklevel=3,
+                )
+            return
+        largest = max(max(c) for c in sizes.values() if c)
+        cpus = min(self.nvol_count, small_cores)
+        if cpus < min(self.nvol_count, largest):
+            warnings.warn(
+                f"Partition {self.partition} is sized by its smallest node "
+                f"({small_part}, {small_cores} cores): the job asks for {cpus} CPUs "
+                f"for {self.nvol_count} subvolumes, so some workers run several in "
+                f"turn. Pass cpus_per_task=N (CLI --cpus-per-task N) and exclude "
+                "the smaller nodes to use more.",
+                UserWarning,
+                stacklevel=3,
+            )
+
+    def _check_stellar_pop_mount(self) -> None:
+        """Warn about a ``/cosma8`` ``stellar_pop_dir`` on nodes that may lack it."""
+        if not str(self.stellar_pop_dir).startswith("/cosma8/"):
+            return
+        missing = [
+            p
+            for p in _split_partitions(self.partition)
+            if p not in _PARTITIONS_MOUNTING_COSMA8
+        ]
+        if missing:
+            source = (
+                "$GALFORM_STELLAR_POP_DIR"
+                if self._stellar_pop_from_env
+                else "stellar_pop_dir"
+            )
+            warnings.warn(
+                f"{source} is {self.stellar_pop_dir} on /cosma8, but partition(s) "
+                f"{', '.join(missing)} are not known to mount /cosma8 (cosma5 and "
+                "cosma7 nodes do not); GALFORM would fail there at run time. Pass "
+                f"stellar_pop_dir={COSMA5_STELLAR_POP_DIR!r} or drop those partitions.",
+                UserWarning,
+                stacklevel=3,
+            )
+
+    def _extra_directives(self) -> List[str]:
+        """``#SBATCH`` lines for mail, exclude, dependency and extra options."""
+        options = []
+        if self.mail_user:
+            options += [
+                f"--mail-user={self.mail_user}",
+                f"--mail-type={self.mail_type}",
+            ]
+        if self.exclude:
+            options.append(f"--exclude={self.exclude}")
+        if self.dependency:
+            options += [f"--dependency={self.dependency}", "--kill-on-invalid-dep=yes"]
+        options += self.extra_sbatch_args
+        return [f"#SBATCH {opt}" for opt in options]
+
     def create_job_script(
         self, iz: int, tcsh_path: Optional[str] = None, mem_per_cpu: int = 4000
     ) -> str:
         """Generate a bash wrapper that runs all subvolumes in a single SLURM slot.
 
-        Requests ``--cpus-per-task=min(nvol_count, partition_cpus_per_node)`` and
+        Requests ``--cpus-per-task=min(nvol_count, cpus)`` and
         forks one worker per CPU.  Each worker iterates over a strided subset of
         task IDs so that all ``nvol_count`` subvolumes are covered even when
         ``nvol_count`` exceeds the partition's ``cpus_per_node`` (e.g. L800's 1024
         ivols on a 128-CPU cosma8 node: 128 workers each run 8 ivols sequentially).
-        No ``--array`` flag is used.
+        No ``--array`` flag is used.  ``cpus`` is ``cpus_per_task`` when given,
+        else the smallest ``cpus_per_node`` among the listed partitions.
 
         Args:
             iz: Snapshot index (informational; used by the referenced tcsh script).
             tcsh_path: Absolute path to the tcsh GALFORM script on disk.  When
-                ``None``, defaults to
-                ``<log_path>/<nbody_sim>/<model>_iz<iz>.csh``.
+                ``None``, defaults to :meth:`tcsh_script_path` (the file
+                ``submit_job`` writes).
             mem_per_cpu: Memory per CPU in MB passed to ``--mem-per-cpu``.
         """
         if tcsh_path is None:
-            tcsh_path = str(self.log_path / self.nbody_sim / f"{self.model}_iz{iz}.csh")
+            tcsh_path = str(self.tcsh_script_path(iz))
         jobname = f"{self.nbody_sim}.{self.model}"
         logname = self.log_path / self.nbody_sim / f"{self.model}.%j.log"
         _try_mkdir(logname.parent)
 
-        partition_cfg = PARTITION_CONFIGS.get(self.partition)
-        effective_cpus = (
-            min(self.nvol_count, partition_cfg.cpus_per_node)
-            if partition_cfg is not None
-            else self.nvol_count
-        )
-
-        mail_lines = (
-            f"#SBATCH --mail-user={self.mail_user}\n#SBATCH --mail-type={self.mail_type}"
-            if self.mail_user
-            else ""
-        )
+        effective_cpus = self._effective_cpus()
+        extra_lines = "\n".join(self._extra_directives())
 
         script = f"""#!/bin/bash
 #SBATCH --ntasks=1
@@ -1032,7 +1502,7 @@ set SAMPLE_GALS_EXE    = ${{build_dir}}/sample_gals
 #SBATCH -p {self.partition}
 #SBATCH -A {self.account}
 #SBATCH -t {self.walltime}
-{mail_lines}
+{extra_lines}
 
 # One worker per allocated CPU, so every thread pool stays single-threaded:
 # (workers x threads) must not exceed --cpus-per-task on a shared node.
@@ -1072,7 +1542,18 @@ exit $failed
     def _sbatch_with_retry(
         self, script_content: str, iz: int, extra_args: Optional[List[str]] = None
     ) -> Optional[str]:
-        """Submit *script_content* via sbatch, retrying on transient scheduler errors."""
+        """Hook ``submit_job`` calls; kept so subclasses overriding it still work."""
+        return self.sbatch_with_retry(script_content, iz, extra_args)
+
+    def sbatch_with_retry(
+        self, script_content: str, iz: int, extra_args: Optional[List[str]] = None
+    ) -> Optional[str]:
+        """Submit *script_content* via sbatch, retrying on transient scheduler errors.
+
+        *extra_args* go on the ``sbatch`` command line, where they override the
+        script's ``#SBATCH`` directives.  Returns the job id, or ``None`` if
+        sbatch printed none.
+        """
         cmd = ["sbatch"] + (extra_args or [])
         for attempt in range(1, self.submit_retries + 1):
             try:
@@ -1123,9 +1604,9 @@ exit $failed
     ) -> Optional[str]:
         """Submit a packed (single-slot) SLURM job for snapshot iz.
 
-        Writes the inner tcsh script to
-        ``<log_path>/<nbody_sim>/<model>_iz<iz>.csh`` on disk, then submits
-        the bash wrapper generated by ``create_job_script`` via ``sbatch``.
+        Writes the inner tcsh script to :meth:`tcsh_script_path` (a name unique
+        to the script's content, so queued jobs never see it change), then
+        submits the bash wrapper generated by ``create_job_script`` via ``sbatch``.
         Returns the SLURM job ID, or ``None`` if *dry_run* is ``True``.
 
         Args:
@@ -1133,8 +1614,8 @@ exit $failed
             mem_per_cpu: Memory per CPU in MB (forwarded to the bash wrapper).
             dry_run: If True, print scripts and return None without submitting.
         """
-        tcsh_path = self.log_path / self.nbody_sim / f"{self.model}_iz{iz}.csh"
         tcsh_script = self.create_tcsh_script(iz)
+        tcsh_path = self.tcsh_script_path(iz, tcsh_script)
         bash_script = self.create_job_script(iz, str(tcsh_path), mem_per_cpu)
 
         if dry_run:
@@ -1148,8 +1629,7 @@ exit $failed
             print(bash_script)
             return None
 
-        tcsh_path.parent.mkdir(parents=True, exist_ok=True)
-        tcsh_path.write_text(tcsh_script)
+        self.write_tcsh_script(iz, tcsh_script)
 
         return self._sbatch_with_retry(bash_script, iz)
 
