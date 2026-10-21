@@ -1,6 +1,7 @@
-# ==========================================
-# MASSIVE PHYSICS DATA & PLOTS
-# ==========================================
+# Private notes (literature.md, ROADMAP.md, achievements.md) are excluded
+# via .git/info/exclude, not here.
+
+# --- Physics data, outputs and plots (never commit) ---
 *.hdf5
 *.h5
 *.dat
@@ -14,11 +15,11 @@
 data/
 convergence_results*/
 *_plots/
-examples/_plots/
+# root-level scratch images from notebooks
+/*.png
+/*.pdf
 
-# ==========================================
-# HPC LOGS & SLURM OUTPUTS
-# ==========================================
+# --- HPC / SLURM logs ---
 slurm-*.out
 *.log
 *.err
@@ -26,22 +27,12 @@ core.*
 .last_job_id
 *monitor_memory*
 logs/
-scripts/logs/
 
-# ==========================================
-# CUSTOM PROJECT DIRECTORIES & SCRATCH
-# ==========================================
-# Root-level scratch images from notebooks
-/*.png
-/*.pdf
-kai/
+# --- Local scratch directories ---
+scripts/
 examples/ongoing/
-examples/.ruff_cache/
-examples/**/.ruff_cache/
 
-# ==========================================
-# COMPILED C/C++/FORTRAN BINARIES
-# ==========================================
+# --- Compiled binaries ---
 *.o
 *.so
 *.a
@@ -50,17 +41,12 @@ examples/**/.ruff_cache/
 *.mod
 bin/
 
-# ==========================================
-# PYTHON CORE (Byte-compiled)
-# ==========================================
+# --- Python bytecode ---
 __pycache__/
-scripts/__pycache__/
 *.py[cod]
 *$py.class
 
-# ==========================================
-# DISTRIBUTION & PACKAGING
-# ==========================================
+# --- Packaging / build ---
 .Python
 build/
 develop-eggs/
@@ -83,47 +69,36 @@ MANIFEST
 *.manifest
 *.spec
 
-# ==========================================
-# TESTING & JUPYTER
-# ==========================================
+# --- Testing, coverage, tool caches ---
 htmlcov/
 .tox/
 .nox/
 .coverage
 .coverage.*
-.cache
+.cache/
 nosetests.xml
 coverage.xml
 *.cover
 *.py,cover
 .hypothesis/
 .pytest_cache/
-.ipynb_checkpoints
+.ruff_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.ipynb_checkpoints/
 
-slides/*
-examples/2pcf/*.png
-examples/2pcf/*.gif
-.venv*
-
-
-# ==========================================
-# ENVIRONMENTS & TYPING
-# ==========================================
+# --- Environments and secrets ---
 .python-version
 .env
-.venv
+.venv*
 env/
 venv/
 ENV/
 env.bak/
 venv.bak/
-.mypy_cache/
-.dmypy.json
-dmypy.json
 
-# ==========================================
-# IDEs & OS FILES
-# ==========================================
+# --- IDEs and OS files ---
 .vscode/
 .idea/
 *.swp
@@ -132,18 +107,9 @@ dmypy.json
 .DS_Store
 Thumbs.db
 
-# ==========================================
-# AI Agents & GENERATED CODE
-# ==========================================
+# --- AI agents (AGENTS.md is tracked) ---
 .claude/
 .mcp.json
 CLAUDE.md
+CLAUDE.local.md
 GEMINI.md
-
-
-# ==========================================
-# Custom
-# ==========================================
-
-scripts/
-data/
