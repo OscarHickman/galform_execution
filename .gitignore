@@ -113,3 +113,39 @@ Thumbs.db
 CLAUDE.md
 CLAUDE.local.md
 GEMINI.md
+
+# =====================================================================
+# Added 2026-10-26 (cross-repo .gitignore audit): rules this file lacked
+# =====================================================================
+
+# ---- SLURM / HPC output ----
+.nfs*
+
+# ---- Bulk data, simulation products and trained models (live on /cosma5-8) ----
+*.pt
+*.pth
+*.ckpt
+
+# ---- Talk / presentation figure scripts (kept on disk, never tracked) ----
+/talks/
+
+# ---- Secrets ----
+.env.*
+
+# ---- Local agent / editor state ----
+.cursor/
+.gemini/
+.serena/
+.playwright-mcp/
+.antigravity*/
+
+# ---- Markdown is ignored by default ----
+# Agent notes, plans, reviews, drafts and dated write-ups stay on disk but out
+# of git. Real documentation is re-included by name; add a line here for a
+# new doc (or `git add -f` it).
+*.md
+!README.md
+!AGENTS.md
+!CHANGELOG.md
+!CONTRIBUTING.md
+!LICENSE.md
